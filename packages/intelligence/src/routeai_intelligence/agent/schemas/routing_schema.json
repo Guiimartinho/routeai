@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://routeai.dev/schemas/routing_strategy.json",
+  "title": "RoutingStrategy",
+  "description": "Routing strategy output defining net ordering, layer assignments, via strategy, and cost function weights",
+  "type": "object",
+  "required": ["routing_order", "layer_assignment", "via_strategy", "cost_weights"],
+  "additionalProperties": true,
+  "properties": {
+    "routing_order": {
+      "type": "array",
+      "description": "Nets ordered by routing priority (highest first)",
+      "items": {
+        "type": "object",
+        "required": ["net_name", "priority", "reason"],
+        "additionalProperties": true,
+        "properties": {
+          "net_name": {
+            "type": "string",
+            "description": "Exact net identifier from the netlist",
+            "minLength": 1
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Routing priority (1=lowest, 10=highest)",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "reason": {
+            "type": "string",
+            "description": "Justification for this priority assignment",
+            "minLength": 1
+          },
+          "constraints": {
+            "type": "object",
+            "description": "Per-net routing constraints",
+            "additionalProperties": true,
+            "properties": {
+              "max_length_mm": {
+                "type": ["number", "null"],
+                "description": "Maximum total trace length in mm"
+              },
+              "min_spacing_mm": {
+                "type": ["number", "null"],
+                "description": "Minimum spacing to adjacent traces in mm"
+              },
+              "impedance_ohm": {
+                "type": ["number", "null"],
+                "description": "Target characteristic impedance in ohms"
+              },
+              "length_match_group": {
+                "type": ["string", "null"],
+                "description": "Length match group identifier"
+              },
+              "max_vias": {
+                "type": ["integer", "null"],
+                "description": "Maximum number of vias for this net"
+              },
+              "preferred_layers": {
+                "type": "array",
+                "description": "Ordered list of preferred routing layers",
+                "items": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "layer_assignment": {
+      "type": "object",
+      "description": "Net pattern -> layer assignment mapping",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["signal_layers", "reason"],
+        "additionalProperties": true,
+        "properties": {
+          "signal_layers": {
+            "type": "array",
+            "description": "Ordered list of preferred layers for matching nets",
+            "items": {"type": "string"},
+            "minItems": 1
+          },
+          "reason": {
+            "type": "string",
+            "description": "Justification for layer assignment",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "via_strategy": {
+      "type": "object",
+      "description": "Via usage rules by signal category",
+      "required": ["high_speed", "general", "power", "return_path_via_max_distance_mm"],
+      "additionalProperties": true,
+      "properties": {
+        "high_speed": {
+          "type": "string",
+          "description": "Via policy for high-speed nets",
+          "enum": ["through_only", "through_or_blind"]
+        },
+        "general": {
+          "type": "string",
+          "description": "Via policy for general nets",
+          "enum": ["through_only", "through_or_blind"]
+        },
+        "power": {
+          "type": "string",
+          "description": "Via policy for power nets",
+          "enum": ["through_only", "through_or_blind"]
+        },
+        "return_path_via_max_distance_mm": {
+          "type": "number",
+          "description": "Max distance from signal via to return-path stitching via in mm",
+          "minimum": 0.0,
+          "maximum": 10.0
+        },
+        "via_size_overrides": {
+          "type": "object",
+          "description": "Per-net-class via size overrides {net_class: {drill_mm, pad_mm}}",
+          "additionalProperties": true
+        }
+      }
+    },
+    "cost_weights": {
+      "type": "object",
+      "description": "Routing cost function weights (0.0 - 1.0)",
+      "required": ["wire_length", "via_count", "congestion", "layer_change"],
+      "additionalProperties": true,
+      "properties": {
+        "wire_length": {
+          "type": "number",
+          "description": "Penalty for total trace length",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "via_count": {
+          "type": "number",
+          "description": "Penalty per via used",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "congestion": {
+          "type": "number",
+          "description": "Penalty for routing through dense areas",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "layer_change": {
+          "type": "number",
+          "description": "Penalty for changing layers",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      }
+    },
+    "constraints_generated": {
+      "type": "array",
+      "description": "Additional constraints inferred from the design",
+      "items": {
+        "type": "object",
+        "required": ["type", "description"],
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Constraint type: spacing, length_match, impedance, width, keep_out, manual_routing_required, warning"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable constraint description"
+          },
+          "affected_nets": {
+            "type": "array",
+            "description": "Net names this constraint applies to",
+            "items": {"type": "string"}
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Constraint-specific parameters",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "adjustment_notes": {
+      "type": "array",
+      "description": "Changes made during iterative adjustment (empty on first pass)",
+      "items": {
+        "type": "object",
+        "required": ["change", "reason"],
+        "additionalProperties": true,
+        "properties": {
+          "change": {
+            "type": "string",
+            "description": "What was changed"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why, referencing solver feedback"
+          },
+          "affected_nets": {
+            "type": "array",
+            "description": "Nets affected by this change",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

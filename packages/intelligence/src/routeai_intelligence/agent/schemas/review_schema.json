@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://routeai.dev/schemas/review_result.json",
+  "title": "ReviewResult",
+  "description": "Comprehensive PCB design review result with findings across seven categories",
+  "type": "object",
+  "required": ["summary", "findings", "category_summaries"],
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "object",
+      "description": "High-level review summary",
+      "required": ["overall_status", "critical_count", "error_count", "warning_count", "info_count", "review_categories_evaluated", "recommendation"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_status": {
+          "type": "string",
+          "description": "Overall review result",
+          "enum": ["PASS", "CONDITIONAL_PASS", "FAIL"]
+        },
+        "critical_count": {
+          "type": "integer",
+          "description": "Number of CRITICAL severity findings",
+          "minimum": 0
+        },
+        "error_count": {
+          "type": "integer",
+          "description": "Number of ERROR severity findings",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "description": "Number of WARNING severity findings",
+          "minimum": 0
+        },
+        "info_count": {
+          "type": "integer",
+          "description": "Number of INFO severity findings",
+          "minimum": 0
+        },
+        "review_categories_evaluated": {
+          "type": "array",
+          "description": "List of review categories that were evaluated",
+          "items": {
+            "type": "string",
+            "enum": ["drc", "decoupling", "impedance", "thermal", "manufacturing", "placement", "high_speed"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "recommendation": {
+          "type": "string",
+          "description": "Overall recommendation text for the design team",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Individual design review findings",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "severity", "title", "description", "recommendation", "reference"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique finding identifier (e.g., 'DRC-001', 'DECAP-003')",
+            "pattern": "^[A-Z_]+-[0-9]+$"
+          },
+          "category": {
+            "type": "string",
+            "description": "Review category this finding belongs to",
+            "enum": ["drc", "decoupling", "impedance", "thermal", "manufacturing", "placement", "high_speed"]
+          },
+          "severity": {
+            "type": "string",
+            "description": "Finding severity level",
+            "enum": ["CRITICAL", "ERROR", "WARNING", "INFO"]
+          },
+          "title": {
+            "type": "string",
+            "description": "Brief finding title",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the issue found",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "location": {
+            "type": "object",
+            "description": "Physical location of the finding on the board",
+            "additionalProperties": false,
+            "properties": {
+              "components": {
+                "type": "array",
+                "description": "Affected component reference designators",
+                "items": {"type": "string"}
+              },
+              "nets": {
+                "type": "array",
+                "description": "Affected net names",
+                "items": {"type": "string"}
+              },
+              "coordinates_mm": {
+                "type": ["object", "null"],
+                "description": "Board coordinates of the finding",
+                "properties": {
+                  "x": {"type": "number"},
+                  "y": {"type": "number"}
+                },
+                "required": ["x", "y"]
+              }
+            }
+          },
+          "recommendation": {
+            "type": "string",
+            "description": "Specific, actionable recommendation to resolve the finding",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "reference": {
+            "type": "string",
+            "description": "IPC standard clause, datasheet section, or specification reference",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "auto_fixable": {
+            "type": "boolean",
+            "description": "Whether this finding can be auto-corrected by the tool",
+            "default": false
+          }
+        }
+      }
+    },
+    "category_summaries": {
+      "type": "object",
+      "description": "Per-category summary status",
+      "required": ["drc", "decoupling", "impedance", "thermal", "manufacturing", "placement", "high_speed"],
+      "additionalProperties": false,
+      "properties": {
+        "drc": {"$ref": "#/$defs/category_summary"},
+        "decoupling": {"$ref": "#/$defs/category_summary"},
+        "impedance": {"$ref": "#/$defs/category_summary"},
+        "thermal": {"$ref": "#/$defs/category_summary"},
+        "manufacturing": {"$ref": "#/$defs/category_summary"},
+        "placement": {"$ref": "#/$defs/category_summary"},
+        "high_speed": {"$ref": "#/$defs/category_summary"}
+      }
+    }
+  },
+  "$defs": {
+    "category_summary": {
+      "type": "object",
+      "description": "Summary for a single review category",
+      "required": ["status", "finding_count", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Category pass/fail status",
+          "enum": ["PASS", "FAIL"]
+        },
+        "finding_count": {
+          "type": "integer",
+          "description": "Number of findings in this category",
+          "minimum": 0
+        },
+        "notes": {
+          "type": "string",
+          "description": "Summary notes for this category",
+          "maxLength": 1024
+        }
+      }
+    }
+  }
+}

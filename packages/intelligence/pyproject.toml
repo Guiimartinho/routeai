@@ -1,0 +1,56 @@
+[tool.poetry]
+name = "routeai-intelligence"
+version = "0.1.0"
+description = "RouteAI Intelligence - LLM-powered PCB design analysis, constraint generation, and RAG pipeline"
+authors = ["RouteAI Team"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "routeai_intelligence", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+routeai-core = {path = "../core", develop = true}
+routeai-solver = {path = "../solver", develop = true}
+anthropic = ">=0.40.0"
+httpx = ">=0.25.0"
+langchain-core = "*"
+langchain-anthropic = "*"
+pydantic = ">=2.0,<3.0"
+pgvector = "*"
+asyncpg = "*"
+numpy = ">=1.24,<3.0"
+uvicorn = ">=0.20.0"
+fastapi = ">=0.100.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0"
+pytest-asyncio = ">=0.21"
+pytest-cov = ">=4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--tb=short -q"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks integration tests",
+]
+
+[tool.ruff]
+extend = "../../ruff.toml"
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.coverage.run]
+source = ["routeai_intelligence"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 60
+show_missing = true

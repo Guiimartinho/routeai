@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://routeai.dev/schemas/constraint_set.json",
+  "title": "ConstraintSet",
+  "description": "Complete set of PCB design constraints generated from schematic analysis",
+  "type": "object",
+  "required": ["net_classes", "diff_pairs", "length_groups", "special_rules", "metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "net_classes": {
+      "type": "array",
+      "description": "Net class definitions with design rules for groups of nets",
+      "items": {
+        "type": "object",
+        "required": ["name", "nets", "trace_width_mm", "clearance_mm", "confidence", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Net class name (e.g., 'Default', 'Power', 'HighSpeed_USB')",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "description": {
+            "type": "string",
+            "description": "Purpose and characteristics of this net class",
+            "maxLength": 512
+          },
+          "nets": {
+            "type": "array",
+            "description": "Net names belonging to this class",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "trace_width_mm": {
+            "type": "number",
+            "description": "Default trace width in millimeters",
+            "minimum": 0.025,
+            "maximum": 25.0
+          },
+          "clearance_mm": {
+            "type": "number",
+            "description": "Minimum clearance to other copper in millimeters",
+            "minimum": 0.025,
+            "maximum": 25.0
+          },
+          "via_drill_mm": {
+            "type": "number",
+            "description": "Via drill diameter in millimeters",
+            "minimum": 0.05,
+            "maximum": 6.35
+          },
+          "via_size_mm": {
+            "type": "number",
+            "description": "Via annular ring outer diameter in millimeters",
+            "minimum": 0.1,
+            "maximum": 10.0
+          },
+          "impedance_ohm": {
+            "type": ["number", "null"],
+            "description": "Target single-ended impedance in ohms",
+            "minimum": 10,
+            "maximum": 200
+          },
+          "max_current_a": {
+            "type": ["number", "null"],
+            "description": "Maximum expected current in amperes",
+            "minimum": 0.0,
+            "maximum": 100.0
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Confidence score for this constraint set (0.0 to 1.0)",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "source": {
+            "type": "string",
+            "description": "Citation(s) justifying these values",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "requires_review": {
+            "type": "boolean",
+            "description": "Whether this constraint requires manual engineer review",
+            "default": false
+          }
+        }
+      }
+    },
+    "diff_pairs": {
+      "type": "array",
+      "description": "Differential pair definitions with impedance and skew constraints",
+      "items": {
+        "type": "object",
+        "required": ["name", "positive_net", "negative_net", "impedance_ohm", "trace_width_mm", "gap_mm", "max_skew_mm", "confidence", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Differential pair name (e.g., 'USB_D', 'ETH_TX')",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "positive_net": {
+            "type": "string",
+            "description": "Positive signal net name",
+            "minLength": 1
+          },
+          "negative_net": {
+            "type": "string",
+            "description": "Negative signal net name",
+            "minLength": 1
+          },
+          "impedance_ohm": {
+            "type": "number",
+            "description": "Target differential impedance in ohms",
+            "minimum": 20,
+            "maximum": 400
+          },
+          "trace_width_mm": {
+            "type": "number",
+            "description": "Individual trace width in millimeters",
+            "minimum": 0.025,
+            "maximum": 5.0
+          },
+          "gap_mm": {
+            "type": "number",
+            "description": "Edge-to-edge spacing between traces in millimeters",
+            "minimum": 0.025,
+            "maximum": 5.0
+          },
+          "max_skew_mm": {
+            "type": "number",
+            "description": "Maximum intra-pair length mismatch in millimeters",
+            "minimum": 0.0,
+            "maximum": 10.0
+          },
+          "max_length_mm": {
+            "type": ["number", "null"],
+            "description": "Maximum total trace length in millimeters",
+            "minimum": 0.0,
+            "maximum": 5000.0
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Confidence score (0.0 to 1.0)",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "source": {
+            "type": "string",
+            "description": "Citation(s) justifying these values",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "requires_review": {
+            "type": "boolean",
+            "description": "Whether this constraint requires manual review",
+            "default": false
+          }
+        }
+      }
+    },
+    "length_groups": {
+      "type": "array",
+      "description": "Length matching groups for timing-critical signal buses",
+      "items": {
+        "type": "object",
+        "required": ["name", "nets", "tolerance_mm", "confidence", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Group name (e.g., 'DDR4_DQ_Byte0')",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "description": {
+            "type": "string",
+            "description": "Purpose of this length matching group",
+            "maxLength": 512
+          },
+          "nets": {
+            "type": "array",
+            "description": "Net names that must be length matched",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 2
+          },
+          "target_length_mm": {
+            "type": ["number", "null"],
+            "description": "Target trace length in mm; null means match to longest",
+            "minimum": 0.0,
+            "maximum": 5000.0
+          },
+          "tolerance_mm": {
+            "type": "number",
+            "description": "Allowed deviation from target or from group mean",
+            "minimum": 0.0,
+            "maximum": 100.0
+          },
+          "reference_net": {
+            "type": ["string", "null"],
+            "description": "Reference net to match others against (e.g., clock net)"
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Matching priority; higher values matched first",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 0
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Confidence score (0.0 to 1.0)",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "source": {
+            "type": "string",
+            "description": "Citation(s) for length matching requirement",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      }
+    },
+    "special_rules": {
+      "type": "array",
+      "description": "Special routing and spacing rules beyond standard net classes",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "affected_nets", "rule_type", "parameters", "confidence", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Rule name",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the rule and its purpose",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "affected_nets": {
+            "type": "array",
+            "description": "Nets this rule applies to",
+            "items": {"type": "string"}
+          },
+          "rule_type": {
+            "type": "string",
+            "description": "Category of the special rule",
+            "enum": ["clearance", "keepout", "guard_ring", "via_restriction", "layer_restriction", "spacing"]
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Rule-specific parameters (varies by rule_type)",
+            "additionalProperties": true
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Confidence score (0.0 to 1.0)",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "source": {
+            "type": "string",
+            "description": "Citation(s) justifying this rule",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "requires_review": {
+            "type": "boolean",
+            "description": "Whether this rule requires manual review",
+            "default": false
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Summary statistics about the generated constraint set",
+      "required": ["total_nets_analyzed", "total_constraints_generated", "safety_critical_count", "review_required_count", "average_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "total_nets_analyzed": {
+          "type": "integer",
+          "description": "Number of nets analyzed",
+          "minimum": 0
+        },
+        "total_constraints_generated": {
+          "type": "integer",
+          "description": "Total number of individual constraints produced",
+          "minimum": 0
+        },
+        "safety_critical_count": {
+          "type": "integer",
+          "description": "Number of safety-critical constraints (clearance, creepage, impedance, current)",
+          "minimum": 0
+        },
+        "review_required_count": {
+          "type": "integer",
+          "description": "Number of constraints flagged for manual review",
+          "minimum": 0
+        },
+        "average_confidence": {
+          "type": "number",
+          "description": "Mean confidence score across all constraints",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      }
+    }
+  }
+}
