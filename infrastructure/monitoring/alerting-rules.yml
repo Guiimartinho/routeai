@@ -1,0 +1,69 @@
+groups:
+  - name: routeai_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_requests_total[5m])) by (job)
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} has an error rate above 5% (current: {{ printf \"%.1f\" (mul $value 100) }}%) for the last 2 minutes."
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 5
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 latency on {{ $labels.job }}"
+          description: "{{ $labels.job }} P95 latency is above 5 seconds (current: {{ printf \"%.2f\" $value }}s) for the last 3 minutes."
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 1 minute."
+
+      - alert: DRCAccuracyBelowThreshold
+        expr: |
+          (
+            sum(rate(drc_checks_passed_total[10m])) by (job)
+            /
+            sum(rate(drc_checks_total[10m])) by (job)
+          ) < 0.90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DRC accuracy below 90% on {{ $labels.job }}"
+          description: "DRC pass rate on {{ $labels.job }} has dropped below 90% (current: {{ printf \"%.1f\" (mul $value 100) }}%) over the last 5 minutes."
+
+      - alert: HighLLMResponseTime
+        expr: |
+          histogram_quantile(0.95, sum(rate(llm_request_duration_seconds_bucket[5m])) by (le)) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM response time is high"
+          description: "LLM P95 response time exceeds 30 seconds (current: {{ printf \"%.1f\" $value }}s)."
+
+      - alert: RoutingJobBacklog
+        expr: |
+          sum(routing_jobs_pending) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large routing job backlog"
+          description: "There are {{ $value }} pending routing jobs in the queue."

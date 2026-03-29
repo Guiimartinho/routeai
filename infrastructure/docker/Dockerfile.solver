@@ -1,0 +1,72 @@
+# =============================================================================
+# RouteAI Solver Service - Docker Build
+# Python FastAPI service for PCB constraint solving and optimization
+# =============================================================================
+
+FROM python:3.11-slim AS deps
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    POETRY_VERSION=1.7.1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1
+
+# Install system dependencies required by Shapely and scientific packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgeos-dev \
+        libgeos-c1v5 \
+        libspatialindex-dev \
+        gcc \
+        g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install "poetry==${POETRY_VERSION}"
+
+WORKDIR /build
+
+COPY packages/solver/pyproject.toml packages/solver/poetry.lock* ./solver/
+COPY packages/core/pyproject.toml packages/core/poetry.lock* ./core/
+
+RUN cd solver && poetry install --no-root --no-dev --no-directory 2>/dev/null || \
+    pip install fastapi uvicorn pydantic numpy scipy shapely rtree networkx redis asyncpg
+
+# ---------------------------------------------------------------------------
+# Runtime
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/packages
+
+# Install runtime-only system libraries for Shapely
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgeos-c1v5 \
+        libspatialindex6 \
+        curl \
+    && rm -rf /var/lib/apt/lists/* && \
+    groupadd -r routeai && \
+    useradd -r -g routeai -d /app -s /sbin/nologin routeai
+
+WORKDIR /app
+
+COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=deps /usr/local/bin /usr/local/bin
+
+COPY packages/core /app/packages/core
+COPY packages/solver /app/packages/solver
+
+RUN chown -R routeai:routeai /app
+
+USER routeai
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+ENTRYPOINT ["uvicorn"]
+CMD ["packages.solver.src.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2", "--loop", "uvloop", "--http", "httptools"]

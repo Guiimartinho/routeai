@@ -1,0 +1,53 @@
+# =============================================================================
+# RouteAI API Gateway - Multi-stage Docker Build
+# Go API gateway with Gin framework
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build
+# ---------------------------------------------------------------------------
+FROM golang:1.22-bookworm AS builder
+
+ENV CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64
+
+WORKDIR /build
+
+# Copy dependency manifests first for layer caching
+COPY packages/api/go.mod packages/api/go.sum ./
+
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY packages/api/ .
+
+# Build with optimizations
+RUN go build \
+    -ldflags="-s -w -X main.version=$(date +%Y%m%d-%H%M%S)" \
+    -trimpath \
+    -o /build/routeai-api \
+    ./main.go
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime (distroless)
+# ---------------------------------------------------------------------------
+FROM gcr.io/distroless/base-debian12
+
+LABEL maintainer="RouteAI Team" \
+      description="RouteAI API Gateway" \
+      version="1.0"
+
+WORKDIR /app
+
+# Copy the compiled binary
+COPY --from=builder /build/routeai-api /app/routeai-api
+
+# Copy config files if present
+COPY --from=builder /build/config/ /app/config/
+
+EXPOSE 8080
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/app/routeai-api"]

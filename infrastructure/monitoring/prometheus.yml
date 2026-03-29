@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerting-rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "api"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8080"]
+    scrape_interval: 15s
+
+  - job_name: "intelligence"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["intelligence:8000"]
+    scrape_interval: 15s
+
+  - job_name: "solver"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["solver:8001"]
+    scrape_interval: 15s
+
+  - job_name: "router"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["router:50051"]
+    scrape_interval: 15s

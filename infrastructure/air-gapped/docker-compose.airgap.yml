@@ -1,0 +1,229 @@
+version: "3.9"
+
+# Air-gapped RouteAI deployment: fully self-contained stack with local LLM.
+# No external network access is required once images and model weights are loaded.
+#
+# Pre-deployment: pull all images and save with `docker save`, then load on the
+# air-gapped host with `docker load`. See README.md for detailed steps.
+
+services:
+  # ---------- PostgreSQL with pgvector ----------
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: routeai-ag-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: routeai
+      POSTGRES_PASSWORD: routeai_airgap
+      POSTGRES_DB: routeai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routeai -d routeai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres
+        -c shared_preload_libraries=vector
+        -c max_connections=200
+        -c work_mem=64MB
+    networks:
+      - routeai-internal
+
+  # ---------- Redis ----------
+  redis:
+    image: redis:7-alpine
+    container_name: routeai-ag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    networks:
+      - routeai-internal
+
+  # ---------- MinIO (object storage) ----------
+  minio:
+    image: minio/minio:latest
+    container_name: routeai-ag-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: routeai
+      MINIO_ROOT_PASSWORD: routeai_airgap
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: server /data --console-address ":9001"
+    networks:
+      - routeai-internal
+
+  # ---------- Ollama (local LLM serving) ----------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: routeai-ag-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: "0.0.0.0"
+      OLLAMA_NUM_PARALLEL: "2"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks:
+      - routeai-internal
+
+  # ---------- Model Loader (one-shot init container) ----------
+  # Pulls the default models into Ollama on first boot.
+  # On an air-gapped host the models must already be present in the ollama_data volume.
+  model-loader:
+    image: curlimages/curl:latest
+    container_name: routeai-ag-model-loader
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Checking if models are loaded..."
+        # Pull mistral (7B) as the primary reasoning model.
+        curl -sf http://ollama:11434/api/show -d '{"name":"mistral"}' > /dev/null 2>&1 || \
+          (echo "Loading mistral model..." && curl -sf http://ollama:11434/api/pull -d '{"name":"mistral"}')
+        # Pull llama3.1 (8B) as an alternative model.
+        curl -sf http://ollama:11434/api/show -d '{"name":"llama3.1"}' > /dev/null 2>&1 || \
+          (echo "Loading llama3.1 model..." && curl -sf http://ollama:11434/api/pull -d '{"name":"llama3.1"}')
+        # Pull nomic-embed-text for RAG embeddings.
+        curl -sf http://ollama:11434/api/show -d '{"name":"nomic-embed-text"}' > /dev/null 2>&1 || \
+          (echo "Loading nomic-embed-text model..." && curl -sf http://ollama:11434/api/pull -d '{"name":"nomic-embed-text"}')
+        echo "Model loading complete."
+    networks:
+      - routeai-internal
+
+  # ---------- RouteAI API ----------
+  api:
+    image: routeai/api:latest
+    container_name: routeai-ag-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: routeai
+      DB_PASSWORD: routeai_airgap
+      DB_NAME: routeai
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: routeai
+      MINIO_SECRET_KEY: routeai_airgap
+      MINIO_USE_SSL: "false"
+      MINIO_BUCKET: routeai-projects
+      JWT_SECRET: airgap-change-this-secret-in-production
+      INTELLIGENCE_URL: http://intelligence:8081
+      PARSER_URL: http://parser:8082
+    networks:
+      - routeai-internal
+
+  # ---------- RouteAI Intelligence (Python) ----------
+  intelligence:
+    image: routeai/intelligence:latest
+    container_name: routeai-ag-intelligence
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      PORT: "8081"
+      ROUTEAI_DB_URL: "postgresql://routeai:routeai_airgap@postgres:5432/routeai"
+      # Point to local Ollama instead of Anthropic API.
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: mistral
+      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+      # Disable any external API calls.
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+    networks:
+      - routeai-internal
+
+  # ---------- RouteAI Parser ----------
+  parser:
+    image: routeai/parser:latest
+    container_name: routeai-ag-parser
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      PORT: "8082"
+    networks:
+      - routeai-internal
+
+  # ---------- RouteAI Web Frontend ----------
+  web:
+    image: routeai/web:latest
+    container_name: routeai-ag-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_WS_URL: ws://localhost:8080
+    depends_on:
+      - api
+    networks:
+      - routeai-internal
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  ollama_data:
+
+networks:
+  routeai-internal:
+    driver: bridge
+    internal: false  # Set to true on truly air-gapped hosts after images are loaded.

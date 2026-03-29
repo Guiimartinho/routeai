@@ -1,0 +1,70 @@
+# =============================================================================
+# RouteAI Intelligence Service - Multi-stage Docker Build
+# Python FastAPI service for LLM-powered EDA intelligence
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Dependencies
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS deps
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    POETRY_VERSION=1.7.1 \
+    POETRY_HOME=/opt/poetry \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1
+
+RUN pip install "poetry==${POETRY_VERSION}"
+
+WORKDIR /build
+
+# Copy dependency manifests first for layer caching
+COPY packages/intelligence/pyproject.toml packages/intelligence/poetry.lock* ./intelligence/
+COPY packages/core/pyproject.toml packages/core/poetry.lock* ./core/
+COPY packages/parsers/pyproject.toml packages/parsers/poetry.lock* ./parsers/
+COPY packages/solver/pyproject.toml packages/solver/poetry.lock* ./solver/
+
+# Install dependencies (without dev deps)
+RUN cd intelligence && poetry install --no-root --no-dev --no-directory 2>/dev/null || \
+    pip install fastapi uvicorn pydantic httpx aiohttp numpy scikit-learn redis asyncpg minio
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/packages
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r routeai && \
+    useradd -r -g routeai -d /app -s /sbin/nologin routeai
+
+WORKDIR /app
+
+# Copy installed Python packages from deps stage
+COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=deps /usr/local/bin /usr/local/bin
+
+# Copy source code
+COPY packages/core /app/packages/core
+COPY packages/parsers /app/packages/parsers
+COPY packages/solver /app/packages/solver
+COPY packages/intelligence /app/packages/intelligence
+
+RUN chown -R routeai:routeai /app
+
+USER routeai
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+ENTRYPOINT ["uvicorn"]
+CMD ["packages.intelligence.src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--http", "httptools"]

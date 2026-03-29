@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: routeai-config
+  namespace: routeai
+  labels:
+    app.kubernetes.io/part-of: routeai
+data:
+  # Database
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "routeai"
+
+  # Redis
+  REDIS_URL: "redis://redis:6379/0"
+
+  # MinIO
+  MINIO_ENDPOINT: "minio:9000"
+  MINIO_USE_SSL: "false"
+
+  # Service URLs
+  INTELLIGENCE_URL: "http://intelligence:8000"
+  SOLVER_URL: "http://solver:8001"
+  ROUTER_GRPC_ADDR: "router:50051"
+
+  # Logging
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+
+  # LLM
+  LLM_PROVIDER: "anthropic"
+  LLM_MODEL: "claude-sonnet-4-20250514"
+
+  # API
+  GIN_MODE: "release"
+  CORS_ORIGINS: "https://routeai.example.com"

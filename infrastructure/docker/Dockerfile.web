@@ -1,0 +1,62 @@
+# =============================================================================
+# RouteAI Web Frontend - Multi-stage Docker Build
+# React + Vite application served by Nginx
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Dependencies
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS deps
+
+WORKDIR /build
+
+COPY packages/web/package.json packages/web/package-lock.json* packages/web/yarn.lock* ./
+
+RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+    elif [ -f package-lock.json ]; then npm ci; \
+    else npm install; fi
+
+# ---------------------------------------------------------------------------
+# Stage 2: Build
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS builder
+
+WORKDIR /build
+
+COPY --from=deps /build/node_modules ./node_modules
+COPY packages/web/ .
+
+ENV NODE_ENV=production
+
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 3: Runtime (Nginx)
+# ---------------------------------------------------------------------------
+FROM nginx:alpine
+
+LABEL maintainer="RouteAI Team" \
+      description="RouteAI Web Frontend"
+
+# Remove default nginx config
+RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
+
+# Copy custom nginx configuration
+COPY infrastructure/docker/nginx.conf /etc/nginx/nginx.conf
+
+# Copy built assets from builder stage
+COPY --from=builder /build/dist /usr/share/nginx/html
+
+# Create nginx cache directories with correct permissions
+RUN mkdir -p /var/cache/nginx /var/run && \
+    chown -R nginx:nginx /var/cache/nginx /var/run /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:80/health || exit 1
+
+# Run as non-root
+USER nginx
+
+CMD ["nginx", "-g", "daemon off;"]
