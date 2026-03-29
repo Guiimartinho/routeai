@@ -1,0 +1,35 @@
+{
+  "name": "RouteAI Design Review",
+  "description": "AI-powered PCB design review and analysis",
+  "description_full": "RouteAI Design Review analyses your KiCad PCB layout using AI to detect design rule violations, signal integrity issues, thermal problems, and manufacturing concerns. Results are displayed as colour-coded annotations directly on your board.",
+  "identifier": "com.routeai.design-review",
+  "type": "plugin",
+  "author": {
+    "name": "RouteAI",
+    "contact": {
+      "web": "https://routeai.com"
+    }
+  },
+  "maintainer": {
+    "name": "RouteAI",
+    "contact": {
+      "web": "https://routeai.com"
+    }
+  },
+  "license": "MIT",
+  "resources": {
+    "homepage": "https://routeai.com",
+    "issues": "https://github.com/routeai/kicad-plugin/issues",
+    "repository": "https://github.com/routeai/kicad-plugin"
+  },
+  "versions": [
+    {
+      "version": "0.1.0",
+      "status": "development",
+      "kicad_version": "8.0",
+      "download_url": "",
+      "download_size": 0,
+      "install_size": 0
+    }
+  ]
+}

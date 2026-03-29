@@ -1,0 +1,57 @@
+[tool.poetry]
+name = "routeai-cli"
+version = "0.1.0"
+description = "RouteAI CLI - Command-line interface for LLM-powered PCB design analysis"
+authors = ["RouteAI Team"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "routeai_cli", from = "src"}]
+
+[tool.poetry.scripts]
+routeai = "routeai_cli.main:app"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+routeai-core = {path = "../core", develop = true}
+routeai-parsers = {path = "../parsers", develop = true}
+routeai-solver = {path = "../solver", develop = true}
+routeai-intelligence = {path = "../intelligence", develop = true}
+click = ">=8.0,<9.0"
+rich = ">=13.0"
+fastapi = "^0.135.1"
+uvicorn = "^0.41.0"
+python-multipart = "^0.0.22"
+aiofiles = "^25.1.0"
+jinja2 = "^3.1.6"
+google-genai = "^1.67.0"
+openai = "^2.28.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0"
+pytest-cov = ">=4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -q"
+markers = [
+    "slow: marks tests as slow",
+]
+
+[tool.ruff]
+extend = "../../ruff.toml"
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.coverage.run]
+source = ["routeai_cli"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
