@@ -1,0 +1,43 @@
+[tool.poetry]
+name = "routeai-parsers"
+version = "0.1.0"
+description = "RouteAI Parsers - KiCad and Eagle file format parsers for LLM-powered EDA"
+authors = ["RouteAI Team"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "routeai_parsers", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pydantic = ">=2.0,<3.0"
+routeai-core = {path = "../core", develop = true}
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0"
+pytest-cov = ">=4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -q"
+markers = [
+    "slow: marks tests as slow",
+]
+
+[tool.ruff]
+extend = "../../ruff.toml"
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.coverage.run]
+source = ["routeai_parsers"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
