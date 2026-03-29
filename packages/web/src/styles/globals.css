@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg-primary: #030712;
+    --color-bg-secondary: #111827;
+    --color-bg-tertiary: #1f2937;
+    --color-border: #374151;
+    --color-text-primary: #f9fafb;
+    --color-text-secondary: #9ca3af;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #4b5563 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #4b5563;
+    border-radius: 3px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #6b7280;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+  }
+
+  input,
+  textarea,
+  select {
+    @apply bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-500;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    @apply ring-2 ring-brand-500 border-brand-500 outline-none;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg
+           transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed
+           focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 font-medium rounded-lg
+           transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed
+           border border-gray-600;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 text-gray-400 hover:text-gray-100 hover:bg-gray-800 font-medium rounded-lg
+           transition-colors duration-150;
+  }
+
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-lg;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100
+           placeholder-gray-500 focus:ring-2 focus:ring-brand-500 focus:border-brand-500
+           transition-colors duration-150;
+  }
+
+  .severity-critical {
+    @apply text-red-400 bg-red-500/10 border-red-500/30;
+  }
+
+  .severity-error {
+    @apply text-orange-400 bg-orange-500/10 border-orange-500/30;
+  }
+
+  .severity-warning {
+    @apply text-yellow-400 bg-yellow-500/10 border-yellow-500/30;
+  }
+
+  .severity-info {
+    @apply text-blue-400 bg-blue-500/10 border-blue-500/30;
+  }
+}
+
+@layer utilities {
+  .pcb-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}

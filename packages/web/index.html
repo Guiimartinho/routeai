@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="RouteAI - AI-Powered PCB Design Review" />
+    <title>RouteAI - PCB Design Review</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-gray-950 text-gray-100 font-sans antialiased">
+    <div id="root"></div>
+    <script>
+      // Dev auto-login: set token before React mounts so ProtectedRoute sees it
+      if (!localStorage.getItem('routeai_token')) {
+        fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'dev@routeai.com', password: 'dev123' })
+        })
+        .then(r => r.json())
+        .then(d => {
+          if (d.data && d.data.access_token) {
+            localStorage.setItem('routeai_token', d.data.access_token);
+            localStorage.setItem('routeai_refresh_token', d.data.refresh_token || '');
+            window.location.reload();
+          }
+        })
+        .catch(() => {});
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
