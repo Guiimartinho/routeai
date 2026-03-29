@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/Capturar.PNG" alt="RouteAI" width="800"/>
+  <img src="docs/images/Capturar.PNG" alt="RouteAI" width="800"/>
 </p>
 
 <h1 align="center">RouteAI</h1>
@@ -387,12 +387,12 @@ The API gateway exposes the following endpoint groups:
 ## Screenshots
 
 <p align="center">
-  <img src="images/Capturar2.PNG" alt="PCB Viewer" width="400"/>
-  <img src="images/Capturar3.PNG" alt="Design Review" width="400"/>
+  <img src="docs/images/Capturar2.PNG" alt="PCB Viewer" width="400"/>
+  <img src="docs/images/Capturar3.PNG" alt="Design Review" width="400"/>
 </p>
 <p align="center">
-  <img src="images/Capturar4.PNG" alt="3D Board View" width="400"/>
-  <img src="images/Capturar5.PNG" alt="Routing Analysis" width="400"/>
+  <img src="docs/images/Capturar4.PNG" alt="3D Board View" width="400"/>
+  <img src="docs/images/Capturar5.PNG" alt="Routing Analysis" width="400"/>
 </p>
 
 ---
