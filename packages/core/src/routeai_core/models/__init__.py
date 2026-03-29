@@ -1,0 +1,112 @@
+"""RouteAI Core Models - Unified PCB Data Model.
+
+Exports all model classes for schematic, physical, constraint, stackup,
+and manufacturing representations.
+"""
+
+from routeai_core.models.constraints import (
+    DesignRules,
+    DiffPair,
+    KeepOut,
+    LengthGroup,
+    NetClass,
+)
+from routeai_core.models.manufacturing import (
+    AssemblyData,
+    BOM,
+    BOMEntry,
+    FabricationSpec,
+    PickAndPlace,
+    SolderMaskColor,
+    SolderPasteLayer,
+    SurfaceFinish,
+)
+from routeai_core.models.physical import (
+    BoardDesign,
+    BoardOutline,
+    Footprint,
+    Model3D,
+    Pad,
+    PadShape,
+    PadType,
+    ThermalRelief,
+    TraceArc,
+    TraceSegment,
+    Via,
+    ViaType,
+    Zone,
+    ZoneFillType,
+)
+from routeai_core.models.schematic import (
+    Bus,
+    Component,
+    ElectricalType,
+    Net,
+    Pin,
+    SchematicDesign,
+    Sheet,
+    SheetInstance,
+)
+from routeai_core.models.stackup import (
+    CopperWeight,
+    DielectricLayer,
+    Layer,
+    LayerType,
+    StackUp,
+    StackupLayer,
+    make_2_layer_stackup,
+    make_4_layer_stackup,
+    make_6_layer_stackup,
+)
+
+__all__ = [
+    # Schematic
+    "Component",
+    "Pin",
+    "ElectricalType",
+    "Net",
+    "Bus",
+    "Sheet",
+    "SheetInstance",
+    "SchematicDesign",
+    # Physical
+    "PadShape",
+    "PadType",
+    "Pad",
+    "ViaType",
+    "Via",
+    "TraceSegment",
+    "TraceArc",
+    "Model3D",
+    "Footprint",
+    "ZoneFillType",
+    "ThermalRelief",
+    "Zone",
+    "BoardOutline",
+    "BoardDesign",
+    # Constraints
+    "NetClass",
+    "DiffPair",
+    "LengthGroup",
+    "KeepOut",
+    "DesignRules",
+    # Stackup
+    "LayerType",
+    "CopperWeight",
+    "Layer",
+    "DielectricLayer",
+    "StackupLayer",
+    "StackUp",
+    "make_2_layer_stackup",
+    "make_4_layer_stackup",
+    "make_6_layer_stackup",
+    # Manufacturing
+    "SurfaceFinish",
+    "SolderMaskColor",
+    "FabricationSpec",
+    "BOMEntry",
+    "BOM",
+    "PickAndPlace",
+    "SolderPasteLayer",
+    "AssemblyData",
+]

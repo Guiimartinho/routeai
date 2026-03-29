@@ -1,0 +1,118 @@
+"""RouteAI Core - Unified PCB Data Model for LLM-powered EDA.
+
+This package provides the complete data model for representing PCB designs,
+including schematic, physical layout, constraints, stackup, and manufacturing
+information.
+"""
+
+__version__ = "0.1.0"
+
+from routeai_core.geometry import Arc, BoundingBox, Line, Point, Polygon
+from routeai_core.models import (
+    AssemblyData,
+    BOM,
+    BOMEntry,
+    BoardDesign,
+    BoardOutline,
+    Bus,
+    Component,
+    CopperWeight,
+    DesignRules,
+    DielectricLayer,
+    DiffPair,
+    ElectricalType,
+    FabricationSpec,
+    Footprint,
+    KeepOut,
+    Layer,
+    LayerType,
+    LengthGroup,
+    Model3D,
+    Net,
+    NetClass,
+    Pad,
+    PadShape,
+    PadType,
+    PickAndPlace,
+    Pin,
+    SchematicDesign,
+    Sheet,
+    SheetInstance,
+    SolderMaskColor,
+    SolderPasteLayer,
+    StackUp,
+    StackupLayer,
+    SurfaceFinish,
+    ThermalRelief,
+    TraceArc,
+    TraceSegment,
+    Via,
+    ViaType,
+    Zone,
+    ZoneFillType,
+    make_2_layer_stackup,
+    make_4_layer_stackup,
+    make_6_layer_stackup,
+)
+from routeai_core.units import Angle, Length
+
+__all__ = [
+    # Units
+    "Length",
+    "Angle",
+    # Geometry
+    "Point",
+    "Line",
+    "Arc",
+    "Polygon",
+    "BoundingBox",
+    # Schematic
+    "Component",
+    "Pin",
+    "ElectricalType",
+    "Net",
+    "Bus",
+    "Sheet",
+    "SheetInstance",
+    "SchematicDesign",
+    # Physical
+    "PadShape",
+    "PadType",
+    "Pad",
+    "ViaType",
+    "Via",
+    "TraceSegment",
+    "TraceArc",
+    "Model3D",
+    "Footprint",
+    "ZoneFillType",
+    "ThermalRelief",
+    "Zone",
+    "BoardOutline",
+    "BoardDesign",
+    # Constraints
+    "NetClass",
+    "DiffPair",
+    "LengthGroup",
+    "KeepOut",
+    "DesignRules",
+    # Stackup
+    "LayerType",
+    "CopperWeight",
+    "Layer",
+    "DielectricLayer",
+    "StackupLayer",
+    "StackUp",
+    "make_2_layer_stackup",
+    "make_4_layer_stackup",
+    "make_6_layer_stackup",
+    # Manufacturing
+    "SurfaceFinish",
+    "SolderMaskColor",
+    "FabricationSpec",
+    "BOMEntry",
+    "BOM",
+    "PickAndPlace",
+    "SolderPasteLayer",
+    "AssemblyData",
+]
