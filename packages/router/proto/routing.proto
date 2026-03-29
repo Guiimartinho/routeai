@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+package routeai.routing;
+
+option cc_enable_arenas = true;
+
+// ─── Geometric primitives ────────────────────────────────────────────────────
+
+message Point {
+    double x = 1;
+    double y = 2;
+}
+
+message Rect {
+    double x_min = 1;
+    double y_min = 2;
+    double x_max = 3;
+    double y_max = 4;
+}
+
+// ─── Board elements ─────────────────────────────────────────────────────────
+
+message Layer {
+    int32  id        = 1;
+    string name      = 2;
+    enum Direction {
+        HORIZONTAL = 0;
+        VERTICAL   = 1;
+        BOTH       = 2;
+    }
+    Direction preferred_direction = 3;
+    double    thickness           = 4;   // mm
+    bool      is_signal           = 5;
+}
+
+message Pad {
+    string id       = 1;
+    Point  center   = 2;
+    double width    = 3;
+    double height   = 4;
+    int32  layer_id = 5;
+    string net_id   = 6;
+    string component_id = 7;
+}
+
+message Via {
+    string id         = 1;
+    Point  center     = 2;
+    double drill      = 3;
+    double annular    = 4;
+    int32  start_layer = 5;
+    int32  end_layer   = 6;
+    string net_id     = 7;
+}
+
+message Trace {
+    string         id       = 1;
+    string         net_id   = 2;
+    int32          layer_id = 3;
+    double         width    = 4;
+    repeated Point points   = 5;
+}
+
+message Zone {
+    string         id       = 1;
+    int32          layer_id = 2;
+    repeated Point outline  = 3;
+    string         net_id   = 4;   // empty for keepout
+    bool           is_keepout = 5;
+}
+
+message Component {
+    string id        = 1;
+    string reference = 2;
+    Point  position  = 3;
+    double rotation  = 4;
+    bool   is_top    = 5;
+    Rect   bounding_box = 6;
+    repeated Pad pads = 7;
+}
+
+message Net {
+    string       id    = 1;
+    string       name  = 2;
+    repeated Pad pads  = 3;
+
+    bool   is_diff_pair      = 4;
+    string diff_pair_partner = 5;   // id of the other net in pair
+
+    bool   needs_length_match       = 6;
+    string length_match_group       = 7;
+    double target_length            = 8;   // mm; 0 = auto-match
+    double length_tolerance         = 9;   // mm
+}
+
+// ─── Constraints ─────────────────────────────────────────────────────────────
+
+message Constraint {
+    enum Type {
+        MIN_TRACE_WIDTH   = 0;
+        MAX_TRACE_WIDTH   = 1;
+        MIN_CLEARANCE     = 2;
+        MIN_VIA_DRILL     = 3;
+        MIN_VIA_ANNULAR   = 4;
+        DIFF_PAIR_GAP     = 5;
+        DIFF_PAIR_IMPEDANCE = 6;
+        MAX_LENGTH        = 7;
+        MAX_VIA_COUNT     = 8;
+        LAYER_RESTRICTION = 9;
+    }
+    Type   type  = 1;
+    double value = 2;
+    repeated string net_ids   = 3;   // empty = global
+    repeated int32  layer_ids = 4;
+}
+
+// ─── Board state ─────────────────────────────────────────────────────────────
+
+message BoardState {
+    Rect               outline     = 1;
+    repeated Layer     layers      = 2;
+    repeated Component components  = 3;
+    repeated Net       nets        = 4;
+    repeated Trace     traces      = 5;
+    repeated Via       vias        = 6;
+    repeated Zone      zones       = 7;
+    repeated Constraint constraints = 8;
+}
+
+// ─── Routing request / result ────────────────────────────────────────────────
+
+enum RoutingStrategy {
+    AUTO          = 0;
+    GLOBAL_FIRST  = 1;
+    DIRECT_ASTAR  = 2;
+    LEE_MAZE      = 3;
+}
+
+message RoutingRequest {
+    BoardState      board       = 1;
+    repeated string net_ids     = 2;   // empty = route all
+    RoutingStrategy strategy    = 3;
+    int32           max_iterations = 4; // rip-up limit; 0 = default (50)
+    double          grid_resolution = 5; // mm; 0 = auto
+}
+
+message RoutingProgress {
+    int32  nets_total     = 1;
+    int32  nets_completed = 2;
+    int32  nets_failed    = 3;
+    int32  iteration      = 4;
+    double completion_pct = 5;
+    string current_net    = 6;
+    string status_message = 7;
+}
+
+message RouteResult {
+    bool            success = 1;
+    repeated Trace  traces  = 2;
+    repeated Via    vias    = 3;
+    repeated string failed_nets = 4;
+    double          total_wire_length = 5;  // mm
+    int32           total_vias        = 6;
+    string          error_message     = 7;
+}
+
+message CancelRequest {
+    string session_id = 1;
+}
+
+message CancelResponse {
+    bool acknowledged = 1;
+}
+
+message StatusRequest {
+    string session_id = 1;
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+service RoutingService {
+    // Full batch routing – returns final result
+    rpc RouteNets (RoutingRequest) returns (RouteResult);
+
+    // Interactive routing – streams progress updates, final message is result
+    rpc RouteInteractive (RoutingRequest) returns (stream RoutingProgress);
+
+    // Cancel a running interactive route
+    rpc CancelRouting (CancelRequest) returns (CancelResponse);
+
+    // Poll status of a running route
+    rpc GetStatus (StatusRequest) returns (RoutingProgress);
+}
