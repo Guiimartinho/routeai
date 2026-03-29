@@ -84,6 +84,13 @@ logs/
 # MinIO data
 minio_data/
 
+# Claude Code
+CLAUDE.md
+.claude/
+
+# Go binary
+routeai-api
+
 # Temporary files
 tmp/
 temp/
