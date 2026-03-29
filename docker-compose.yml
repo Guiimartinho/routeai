@@ -1,0 +1,161 @@
+version: "3.9"
+
+services:
+  # -------------------------------------------------------------------------
+  # PRIMARY API — Go (Gin), port 8080
+  # Handles all HTTP endpoints: auth, projects, reviews, chat, board,
+  # components, workflow, health, Ollama proxy, WebSocket.
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: ./packages/api
+      dockerfile: Dockerfile
+    container_name: routeai-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      GIN_MODE: release
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: routeai
+      DB_PASSWORD: routeai_dev
+      DB_NAME: routeai
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: routeai
+      MINIO_SECRET_KEY: routeai_dev
+      MINIO_USE_SSL: "false"
+      MINIO_BUCKET: routeai-projects
+      ML_SERVICE_URL: http://ml:8001
+      # Linux users: set OLLAMA_HOST=http://172.17.0.1:11434 in .env
+      OLLAMA_BASE_URL: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      KICAD_INDEX_PATH: /data/component_library/kicad_index.json
+      KICAD_SYMBOLS_PATH: /data/component_library/kicad_symbols.json
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ml:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------------
+  # ML SERVICE — Python (FastAPI/uvicorn), port 8001
+  # ONLY handles ML/LLM operations: review, placement, chat, RAG, suggest.
+  # Called exclusively by the Go API gateway (never directly by clients).
+  # -------------------------------------------------------------------------
+  ml:
+    build:
+      context: ./packages/intelligence
+      dockerfile: Dockerfile
+    container_name: routeai-ml
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      ML_SERVICE_PORT: "8001"
+      # Linux users: set OLLAMA_HOST=http://172.17.0.1:11434 in .env
+      OLLAMA_BASE_URL: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5:7b}"
+      OLLAMA_TIMEOUT: "300"
+      RAG_DB_PATH: /data/datasheet_index.db
+    volumes:
+      - ./data:/data
+    command: >
+      uvicorn routeai_intelligence.ml_service:app
+      --host 0.0.0.0
+      --port 8001
+      --log-level info
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; r=httpx.get('http://localhost:8001/health'); r.raise_for_status()"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL + PostGIS + pgvector
+  # -------------------------------------------------------------------------
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: routeai-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: routeai
+      POSTGRES_PASSWORD: routeai_dev
+      POSTGRES_DB: routeai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routeai -d routeai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres
+        -c shared_preload_libraries=vector
+        -c max_connections=200
+        -c work_mem=64MB
+
+  # -------------------------------------------------------------------------
+  # Redis — currently provisioned for future caching, rate limiting, and
+  # pub/sub needs. Not actively used by application code yet.
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: routeai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # -------------------------------------------------------------------------
+  # MinIO (S3-compatible object storage for project files)
+  # -------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: routeai-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: routeai
+      MINIO_ROOT_PASSWORD: routeai_dev
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: server /data --console-address ":9001"
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
