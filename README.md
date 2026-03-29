@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/Capturar.PNG" alt="RouteAI" width="800"/>
+  <img src="docs/imagem_destaque_routeai.png" alt="RouteAI" width="800"/>
 </p>
 
 <h1 align="center">RouteAI</h1>
