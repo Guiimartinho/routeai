@@ -138,7 +138,11 @@ jobs:
           cd packages/intelligence && poetry install --no-interaction && cd ../..
 
       - name: Install test dependencies
-        run: pip install pytest pydantic httpx
+        run: |
+          pip install poetry pytest
+          cd packages/core && poetry install --no-interaction && cd ../..
+          cd packages/solver && poetry install --no-interaction && cd ../..
+          cd packages/intelligence && poetry install --no-interaction && cd ../..
 
       - name: Run integration tests
         run: |
