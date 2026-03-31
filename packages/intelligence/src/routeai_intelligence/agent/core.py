@@ -17,6 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from routeai_intelligence.agent.react_state import ReActState
 from routeai_intelligence.agent.prompts.constraint_gen import (
     SYSTEM_PROMPT as CONSTRAINT_GEN_PROMPT,
 )
@@ -26,6 +27,7 @@ from routeai_intelligence.agent.prompts.design_review import (
 from routeai_intelligence.agent.prompts.routing_strategy import (
     SYSTEM_PROMPT as ROUTING_STRATEGY_PROMPT,
 )
+from routeai_intelligence.agent.decomposer import TaskDecomposer
 from routeai_intelligence.agent.tools import (
     ALL_TOOLS,
     get_tool_handler,
@@ -189,8 +191,16 @@ class RouteAIAgent:
         messages: list[dict[str, Any]],
         system: str = "",
         tools: list[dict[str, Any]] | None = None,
+        task_type: str = "chat",
     ) -> LLMResponse:
-        """Route a generate call to whichever provider/router is configured."""
+        """Route a generate call to whichever provider/router is configured.
+
+        Args:
+            messages: Conversation messages.
+            system: System prompt.
+            tools: Tool schemas for tool-use.
+            task_type: Task type for VRAM-aware model selection via the router.
+        """
         await self._ensure_initialized()
 
         kwargs: dict[str, Any] = {
@@ -204,6 +214,7 @@ class RouteAIAgent:
         if self._llm_provider is not None:
             return await self._llm_provider.generate(**kwargs)
         if self._llm_router is not None:
+            kwargs["task_type"] = task_type
             return await self._llm_router.generate(**kwargs)
 
         raise RuntimeError("No LLM provider or router configured.")
@@ -219,9 +230,10 @@ class RouteAIAgent:
     ) -> DesignReview:
         """Run a comprehensive design review on a board + schematic pair.
 
-        Executes the ReAct loop with the design review system prompt, allowing
-        the LLM to call tools (DRC, impedance calc, datasheet lookup) as needed.
-        The final structured output is validated through the 3-gate pipeline.
+        On VRAM-constrained systems (<24GB), decomposes the review into
+        sequential T2 sub-tasks via TaskDecomposer so the 14B model can
+        handle each piece. On 24GB+ systems, runs the full ReAct loop with
+        the design review system prompt.
 
         Args:
             board: Serialized BoardDesign dict.
@@ -230,6 +242,117 @@ class RouteAIAgent:
         Returns:
             DesignReview with findings, summary, and validation status.
         """
+        await self._ensure_initialized()
+
+        # Check if T1 tasks need decomposition (VRAM < 24GB)
+        use_decomposition = (
+            self._llm_router is not None
+            and self._llm_router.model_manager is not None
+            and self._llm_router.model_manager.is_t1_decomposed()
+        )
+
+        if use_decomposition:
+            return await self._analyze_design_decomposed(board, schematic)
+
+        return await self._analyze_design_monolithic(board, schematic)
+
+    async def _analyze_design_decomposed(
+        self,
+        board: dict[str, Any],
+        schematic: dict[str, Any],
+    ) -> DesignReview:
+        """Run design review via T1 decomposition (VRAM-constrained path).
+
+        Breaks the review into focused T2 sub-tasks, each handled by the 14B
+        swap model, then synthesizes the findings.
+        """
+        assert self._llm_router is not None
+
+        decomposer = TaskDecomposer(
+            llm_router=self._llm_router,
+            tool_schemas_fn=get_tool_schemas,
+        )
+
+        # Build context string from board + schematic data
+        context = (
+            f"## Board Design\n```json\n{json.dumps(board, indent=2, default=str)}\n```\n\n"
+            f"## Schematic\n```json\n{json.dumps(schematic, indent=2, default=str)}\n```"
+        )
+
+        result = await decomposer.execute(
+            task_type="design_review",
+            context=context,
+            system_base=DESIGN_REVIEW_PROMPT,
+        )
+
+        logger.info(
+            "Design review decomposed into %d steps", result.step_count
+        )
+
+        # The synthesis step output is the final review text — try to parse
+        # it as JSON for structured output, or wrap it in a standard format.
+        raw_output = result.synthesis
+        parsed = self._try_parse_json(raw_output)
+
+        # If parsing failed (no JSON in synthesis), build structured output
+        # from the decomposed step results
+        if "_parse_error" in parsed:
+            parsed = {
+                "summary": {
+                    "total_findings": result.step_count - 1,
+                    "decomposed": True,
+                },
+                "findings": [
+                    {
+                        "title": key,
+                        "description": value,
+                        "severity": "info",
+                    }
+                    for key, value in result.steps.items()
+                    if key != "synthesis"
+                ],
+                "category_summaries": {},
+                "synthesis": result.synthesis,
+            }
+
+        # Gate 1: Schema validation
+        validation_errors: list[str] = []
+        validation_result = self._schema_validator.validate(raw_output, "review")
+        if not validation_result.valid:
+            validation_errors.extend(validation_result.errors)
+
+        # Gate 2: Confidence scoring
+        all_findings: list[dict[str, Any]] = []
+        for finding in parsed.get("findings", []):
+            finding["_item_type"] = "finding"
+            all_findings.append(finding)
+
+        self._confidence_checker.check(all_findings)
+
+        # Gate 3: Citation checking
+        for item in all_findings:
+            is_cited, missing = self._citation_checker.check(item)
+            if not is_cited:
+                item_title = item.get("title", "unknown")
+                validation_errors.append(
+                    f"Missing citation for finding '{item_title}': {', '.join(missing)}"
+                )
+
+        return DesignReview(
+            raw_output=parsed,
+            summary=parsed.get("summary", {}),
+            findings=parsed.get("findings", []),
+            category_summaries=parsed.get("category_summaries", {}),
+            validation_passed=len(validation_errors) == 0,
+            validation_errors=validation_errors,
+        )
+
+    async def _analyze_design_monolithic(
+        self,
+        board: dict[str, Any],
+        schematic: dict[str, Any],
+    ) -> DesignReview:
+        """Run design review as a single ReAct loop (24GB+ VRAM path)."""
         user_message = (
             "Please review the following PCB design.\n\n"
             f"## Board Design\n```json\n{json.dumps(board, indent=2, default=str)}\n```\n\n"
@@ -241,6 +364,7 @@ class RouteAIAgent:
         raw_output = await self._run_react_loop(
             system_prompt=DESIGN_REVIEW_PROMPT,
             user_message=user_message,
+            task_type="design_review",
         )
 
         # Gate 1: Schema validation
@@ -316,6 +440,7 @@ class RouteAIAgent:
         raw_output = await self._run_react_loop(
             system_prompt=CONSTRAINT_GEN_PROMPT,
             user_message=user_message,
+            task_type="constraint_generation",
         )
 
         # Gate 1: Schema validation
@@ -399,6 +524,7 @@ class RouteAIAgent:
         state = await self._execute_react_loop(
             system_prompt=chat_system,
             user_message="\n".join(user_parts),
+            task_type="chat",
         )
 
         return ChatResponse(
@@ -415,6 +541,7 @@ class RouteAIAgent:
         self,
         system_prompt: str,
         user_message: str,
+        task_type: str = "chat",
     ) -> str:
         """Execute a ReAct loop and return the final text output.
 
@@ -422,13 +549,16 @@ class RouteAIAgent:
         constraint generation, routing strategy). It returns the raw text that
         should be parsed as JSON.
         """
-        state = await self._execute_react_loop(system_prompt, user_message)
+        state = await self._execute_react_loop(
+            system_prompt, user_message, task_type=task_type,
+        )
         return state.final_text
 
     async def _execute_react_loop(
         self,
         system_prompt: str,
         user_message: str,
+        task_type: str = "chat",
     ) -> _ReActState:
         """Core ReAct loop: observe -> think -> act -> observe.
 
@@ -436,6 +566,11 @@ class RouteAIAgent:
         Gemini via the router), then iteratively processes tool calls until
         the LLM produces a final response (no more tool calls) or the
         iteration limit is reached.
+
+        Integrates ReActState for:
+        - Tool call deduplication (returns cached results for repeated calls)
+        - Progress tracking (breaks loop after consecutive stale iterations)
+        - State prompt injection (gives the LLM iteration/progress awareness)
 
         Works with ANY provider via the unified LLMResponse:
         - Providers with native tool-use (Anthropic) return tool_calls directly.
@@ -449,20 +584,28 @@ class RouteAIAgent:
         state = _ReActState()
         state.messages = [{"role": "user", "content": user_message}]
 
+        # Initialize ReAct state management (deduplication + progress tracking)
+        react_state = ReActState(max_iterations=MAX_REACT_ITERATIONS)
+
         tool_schemas = get_tool_schemas()
 
         while not state.finished and state.iterations < MAX_REACT_ITERATIONS:
             state.iterations += 1
+            react_state.iteration = state.iterations
             logger.debug(
                 "ReAct iteration %d/%d", state.iterations, MAX_REACT_ITERATIONS
             )
+
+            # Build augmented system prompt with ReAct state context
+            augmented_system = system_prompt + react_state.build_state_prompt()
 
             # OBSERVE + THINK: Send current conversation to the LLM
             try:
                 response = await self._generate(
                     messages=state.messages,
-                    system=system_prompt,
+                    system=augmented_system,
                     tools=tool_schemas,
+                    task_type=task_type,
                 )
             except Exception as exc:
                 logger.error("LLM generation error: %s", exc)
@@ -497,6 +640,8 @@ class RouteAIAgent:
             })
 
             # ACT: If there are tool calls, execute them
+            new_findings_this_iteration = 0
+
             if response.tool_calls:
                 tool_results: list[dict[str, Any]] = []
 
@@ -505,6 +650,30 @@ class RouteAIAgent:
                     tool_input = tool_call.arguments
                     tool_id = tool_call.id
 
+                    # --- Deduplication: check if we already have this result ---
+                    if react_state.is_duplicate(tool_name, tool_input):
+                        cached_msg = react_state.register_call(
+                            tool_name, tool_input, "",
+                        )
+                        logger.info(
+                            "Skipping duplicate tool call: %s(%s)",
+                            tool_name, tool_input,
+                        )
+                        result_str = cached_msg or "CACHED: duplicate call"
+
+                        state.tool_calls.append({
+                            "tool_name": tool_name,
+                            "tool_input": tool_input,
+                            "tool_result": {"status": "cached", "message": result_str},
+                        })
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_id,
+                            "content": result_str,
+                        })
+                        continue
+
+                    # --- Execute the tool normally ---
                     logger.info("Executing tool: %s(%s)", tool_name, tool_input)
 
                     handler = get_tool_handler(tool_name)
@@ -517,6 +686,15 @@ class RouteAIAgent:
                             logger.error("Tool %s raised: %s", tool_name, exc)
                             result = {"status": "error", "message": str(exc)}
 
+                    result_str = json.dumps(result, default=str)
+
+                    # Register the call in ReActState for future dedup
+                    react_state.register_call(tool_name, tool_input, result_str)
+
+                    # Count results that look like they contain useful data
+                    if isinstance(result, dict) and result.get("status") == "ok":
+                        new_findings_this_iteration += 1
+
                     state.tool_calls.append({
                         "tool_name": tool_name,
                         "tool_input": tool_input,
@@ -526,7 +704,7 @@ class RouteAIAgent:
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_id,
-                        "content": json.dumps(result, default=str),
+                        "content": result_str,
                     })
 
                 # OBSERVE: Feed tool results back into the conversation
@@ -543,6 +721,19 @@ class RouteAIAgent:
             if response.stop_reason == "end_turn" and not response.tool_calls:
                 state.finished = True
                 state.final_text = response.text
+
+            # --- Progress tracking: break on stale iterations ---
+            if not state.finished:
+                stop_msg = react_state.update_progress(new_findings_this_iteration)
+                if stop_msg is not None:
+                    logger.warning("ReAct progress stall: %s", stop_msg)
+                    state.finished = True
+                    if not state.final_text:
+                        state.final_text = json.dumps({
+                            "error": stop_msg,
+                            "iterations": state.iterations,
+                            "tool_calls_made": len(state.tool_calls),
+                        })
 
         if not state.finished:
             logger.warning(
@@ -593,6 +784,49 @@ class RouteAIAgent:
             logger.warning("Failed to parse JSON from LLM output")
             return {"_raw_text": text, "_parse_error": "Could not extract valid JSON"}
 
+    async def generate_placement_intent(
+        self,
+        board: dict[str, Any] | str,
+        schematic: dict[str, Any] | str,
+    ) -> Any:
+        """Generate placement intent DSL for the C++ solver.
+
+        Emits a ``PlacementIntent`` model containing zones, critical pairs,
+        keepouts, and ground plane requirements -- **no coordinates**.  Uses
+        ``task_type="placement_strategy"`` so the ``ModelManager`` selects the
+        T2 model on VRAM-constrained systems.
+
+        Args:
+            board: Serialized ``BoardDesign`` dict (or JSON string).
+            schematic: Serialized ``SchematicDesign`` dict (or JSON string).
+
+        Returns:
+            A validated ``PlacementIntent`` Pydantic model.
+        """
+        await self._ensure_initialized()
+
+        from routeai_intelligence.placement.strategy import (
+            generate_placement_intent as _gen_intent,
+        )
+
+        # The function requires an LLMRouter. If only a direct provider is
+        # configured, wrap it in a minimal router-like interface.
+        router = self._llm_router
+        if router is None and self._llm_provider is not None:
+            # Create a temporary router and inject our provider
+            router = LLMRouter()
+            router.add_provider(self._llm_provider, primary=True)
+            router._initialized = True  # noqa: SLF001
+
+        if router is None:
+            raise RuntimeError("No LLM provider or router configured.")
+
+        return await _gen_intent(
+            llm_router=router,
+            board_data=board,
+            schematic_data=schematic,
+        )
+
     async def generate_routing_strategy(
         self,
         board: dict[str, Any],
@@ -621,6 +855,7 @@ class RouteAIAgent:
         raw_output = await self._run_react_loop(
             system_prompt=ROUTING_STRATEGY_PROMPT,
             user_message=user_message,
+            task_type="routing_director",
         )
 
         # Validate
@@ -631,3 +866,57 @@ class RouteAIAgent:
             parsed["_validation_errors"] = validation_result.errors
 
         return parsed
+
+    async def generate_routing_intent(
+        self,
+        board: dict[str, Any],
+        constraints: dict[str, Any],
+        schematic: dict[str, Any],
+        board_id: str = "",
+    ) -> Any:
+        """Generate a RoutingIntent DSL for the C++ routing solver.
+
+        Produces a ``RoutingIntent`` model containing net classes, routing
+        order, layer assignments, cost weights, and voltage drop targets --
+        **no coordinates or trace paths**.  Uses ``task_type="routing_director"``
+        so the ``ModelManager`` selects the T2 model on VRAM-constrained systems.
+
+        This is the new-format counterpart to ``generate_routing_strategy()``.
+        The old method returns a free-form dict; this one returns a validated
+        Pydantic ``RoutingIntent`` model that the C++ solver consumes directly.
+
+        Args:
+            board: Serialized ``BoardDesign`` dict.
+            constraints: Serialized ``ConstraintSet`` dict.
+            schematic: Serialized ``SchematicDesign`` dict.
+            board_id: Optional board identifier to embed in the intent.
+
+        Returns:
+            A validated ``RoutingIntent`` Pydantic model.
+        """
+        await self._ensure_initialized()
+
+        from routeai_intelligence.agent.routing_director import RoutingDirector
+
+        # Build the routing director with the same temperature/token settings
+        director = RoutingDirector(
+            api_key=self._legacy_api_key,
+            model=self._legacy_model,
+            max_tokens=self._max_tokens,
+            temperature=self._temperature,
+        )
+
+        # Prefer LLMRouter for VRAM-aware model selection
+        router = self._llm_router
+        if router is None and self._llm_provider is not None:
+            router = LLMRouter()
+            router.add_provider(self._llm_provider, primary=True)
+            router._initialized = True  # noqa: SLF001
+
+        return await director.generate_routing_intent(
+            board_state=board,
+            schematic_info=schematic,
+            constraints=constraints,
+            board_id=board_id,
+            llm_router=router,
+        )
