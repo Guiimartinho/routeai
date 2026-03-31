@@ -1,5 +1,5 @@
 // ─── SymbolLibrary.tsx ─ SVG symbol renderer for all schematic components ───
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { LibPin, PinType } from '../types';
 import { theme } from '../styles/theme';
 
@@ -163,6 +163,11 @@ export const SYMBOL_DEFS: Record<string, SymbolDef> = {
 // ─── Generate IC symbol for arbitrary pin counts ──────────────────────────
 
 export function generateICSymbol(pinCount: number, pinsPerSide?: number): SymbolDef {
+  // For ICs with > 20 pins and no explicit pinsPerSide, distribute on all 4 sides (QFP-style)
+  if (pinCount > 20 && !pinsPerSide) {
+    return generateICSymbol4Side(pinCount);
+  }
+
   const perSide = pinsPerSide ?? Math.ceil(pinCount / 2);
   const rightCount = pinCount - perSide;
   const pinSpacing = 10;
@@ -210,46 +215,149 @@ export function generateICSymbol(pinCount: number, pinsPerSide?: number): Symbol
   };
 }
 
+/** Generate a 4-side IC symbol (QFP/BGA style) for high pin count ICs */
+function generateICSymbol4Side(pinCount: number): SymbolDef {
+  const pinSpacing = 10;
+  const stubLen = 6;
+
+  // Distribute pins: left, bottom, right, top (roughly equal)
+  const perSide = Math.ceil(pinCount / 4);
+  const leftCount = perSide;
+  const bottomCount = perSide;
+  const rightCount = perSide;
+  const topCount = pinCount - leftCount - bottomCount - rightCount;
+
+  // Body dimensions based on the larger of horizontal/vertical pin counts
+  const vertMax = Math.max(leftCount, rightCount);
+  const horizMax = Math.max(topCount, bottomCount);
+  const bodyH = (vertMax - 1) * pinSpacing + 20;
+  const bodyW = Math.max((horizMax - 1) * pinSpacing + 20, 40);
+  const halfH = bodyH / 2;
+  const halfW = bodyW / 2;
+
+  const pins: LibPin[] = [];
+  let pinNum = 1;
+
+  // Left-side pins: top to bottom
+  for (let i = 0; i < leftCount; i++) {
+    const py = -halfH + 10 + i * pinSpacing;
+    pins.push(pin(`${pinNum}`, `${pinNum}`, -(halfW + stubLen), py, 'input'));
+    pinNum++;
+  }
+
+  // Bottom-side pins: left to right
+  for (let i = 0; i < bottomCount; i++) {
+    const px = -halfW + 10 + i * pinSpacing;
+    pins.push(pin(`${pinNum}`, `${pinNum}`, px, halfH + stubLen, 'passive'));
+    pinNum++;
+  }
+
+  // Right-side pins: bottom to top
+  for (let i = 0; i < rightCount; i++) {
+    const py = halfH - 10 - i * pinSpacing;
+    pins.push(pin(`${pinNum}`, `${pinNum}`, halfW + stubLen, py, 'output'));
+    pinNum++;
+  }
+
+  // Top-side pins: right to left
+  for (let i = 0; i < topCount; i++) {
+    const px = halfW - 10 - i * pinSpacing;
+    pins.push(pin(`${pinNum}`, `${pinNum}`, px, -(halfH + stubLen), 'power'));
+    pinNum++;
+  }
+
+  return {
+    pins,
+    width: (halfW + stubLen) * 2,
+    height: (halfH + stubLen) * 2,
+  };
+}
+
 // ─── Render a generated IC symbol as SVG ──────────────────────────────────
 
 function GeneratedICSymbol({ def }: { def: SymbolDef }): React.ReactElement {
   const stubLen = 6;
-  // Compute body dimensions from pins
-  const leftPins = def.pins.filter(p => p.x < 0);
-  const rightPins = def.pins.filter(p => p.x > 0);
-  const allY = def.pins.map(p => p.y);
-  const minY = Math.min(...allY) - 10;
-  const maxY = Math.max(...allY) + 10;
-  const bodyH = maxY - minY;
-  const bodyW = def.width - stubLen * 2;
-  const halfW = bodyW / 2;
+  // Compute body dimensions from pins — handle 4-side layout
+  const leftPins = def.pins.filter(p => p.x < 0 && Math.abs(p.y) <= def.height / 2);
+  const rightPins = def.pins.filter(p => p.x > 0 && Math.abs(p.y) <= def.height / 2);
+  const topPins = def.pins.filter(p => p.y < 0 && Math.abs(p.x) <= def.width / 2);
+  const bottomPins = def.pins.filter(p => p.y > 0 && Math.abs(p.x) <= def.width / 2);
+  const has4Sides = topPins.length > 0 || bottomPins.length > 0;
+
+  // Find body bounds from pin extents (body edge is stubLen inward from pin tips)
+  let bodyLeft: number, bodyRight: number, bodyTop: number, bodyBottom: number;
+  if (has4Sides) {
+    const allPinX = def.pins.map(p => p.x);
+    const allPinY = def.pins.map(p => p.y);
+    bodyLeft = Math.min(...allPinX) + stubLen;
+    bodyRight = Math.max(...allPinX) - stubLen;
+    bodyTop = Math.min(...allPinY) + stubLen;
+    bodyBottom = Math.max(...allPinY) - stubLen;
+  } else {
+    const allY = def.pins.map(p => p.y);
+    bodyTop = Math.min(...allY) - 10;
+    bodyBottom = Math.max(...allY) + 10;
+    const bodyW = def.width - stubLen * 2;
+    bodyLeft = -bodyW / 2;
+    bodyRight = bodyW / 2;
+  }
+
+  const bodyW = bodyRight - bodyLeft;
+  const bodyH = bodyBottom - bodyTop;
+  const bodyStroke = '#b4b7c9';
+  const bodyFill = '#1a1a2e';
+  const pinLineColor = '#4ec9b0';
 
   return (
     <g>
       <rect
-        x={-halfW} y={minY}
+        x={bodyLeft} y={bodyTop}
         width={bodyW} height={bodyH}
-        fill={theme.schComponentBody}
-        stroke={theme.schComponentBorder}
+        fill={bodyFill}
+        stroke={bodyStroke}
         strokeWidth={0.8} rx={1}
       />
       {/* Notch */}
       <path
-        d={`M -3 ${minY} A 3 3 0 0 0 3 ${minY}`}
-        fill="none" stroke={theme.schComponentBorder} strokeWidth={0.6}
+        d={`M ${(bodyLeft + bodyRight) / 2 - 3} ${bodyTop} A 3 3 0 0 0 ${(bodyLeft + bodyRight) / 2 + 3} ${bodyTop}`}
+        fill="none" stroke={bodyStroke} strokeWidth={0.6}
       />
+      {/* Pin 1 dot marker */}
+      {def.pins.length > 0 && (
+        <circle
+          cx={def.pins[0].x < 0 ? bodyLeft + 3 : def.pins[0].x > 0 ? bodyRight - 3 : def.pins[0].x}
+          cy={def.pins[0].y < 0 ? bodyTop + 3 : def.pins[0].y > 0 ? bodyBottom - 3 : def.pins[0].y}
+          r={1.2}
+          fill={pinLineColor}
+          opacity={0.7}
+        />
+      )}
       {/* Left pin stubs */}
       {leftPins.map((p, i) => (
         <line key={`lp${i}`}
-          x1={p.x} y1={p.y} x2={-halfW} y2={p.y}
-          stroke={theme.schComponentBorder} strokeWidth={0.8}
+          x1={p.x} y1={p.y} x2={bodyLeft} y2={p.y}
+          stroke={pinLineColor} strokeWidth={0.8}
         />
       ))}
       {/* Right pin stubs */}
       {rightPins.map((p, i) => (
         <line key={`rp${i}`}
-          x1={halfW} y1={p.y} x2={p.x} y2={p.y}
-          stroke={theme.schComponentBorder} strokeWidth={0.8}
+          x1={bodyRight} y1={p.y} x2={p.x} y2={p.y}
+          stroke={pinLineColor} strokeWidth={0.8}
+        />
+      ))}
+      {/* Top pin stubs */}
+      {topPins.map((p, i) => (
+        <line key={`tp${i}`}
+          x1={p.x} y1={p.y} x2={p.x} y2={bodyTop}
+          stroke={pinLineColor} strokeWidth={0.8}
+        />
+      ))}
+      {/* Bottom pin stubs */}
+      {bottomPins.map((p, i) => (
+        <line key={`bp${i}`}
+          x1={p.x} y1={bodyBottom} x2={p.x} y2={p.y}
+          stroke={pinLineColor} strokeWidth={0.8}
         />
       ))}
     </g>
@@ -867,8 +975,14 @@ export interface KiCadSymbolData {
   graphics?: KiCadGraphic[];  // optional: rich body graphics from KiCad symbol lib
 }
 
-// ─── Scale factor: KiCad uses 1.27mm grid units, we use ~2.54mm spacing ──
-const KICAD_SCALE = 1.0;
+// ─── Scale factor: KiCad symbol units → RouteAI canvas units ──
+// KiCad symbols vary wildly in size: a resistor body is 1.6x4 units,
+// an STM32 is 22x56 units. We scale them so they look proportional
+// on the schematic canvas where generic symbols span ~30-40 units.
+//
+// Base scale: KiCad 1 unit ≈ 2.54mm. Our canvas 1 unit ≈ 0.5mm.
+// So KiCad 1 unit ≈ 5 canvas units. Fine-tuned to 3.0 for readability.
+const KICAD_SCALE = 3.0;
 
 // ─── Pin connection point computation ─────────────────────────────────────
 // Pin position in the JSON is the tip (connection point).
@@ -1130,18 +1244,24 @@ export function renderKiCadSymbol({
   const bh = by2 - by1;
 
   // Colors matching KiCad dark theme
-  const bodyFill = '#2a3048';
-  const bodyStroke = '#9ba4b8';
-  const pinColor = '#40c060';
+  const bodyFill = '#1a1a2e';
+  const bodyStroke = '#b4b7c9';
+  const pinColor = '#4ec9b0';
   const pinNameColor = '#00c8c8';
   const pinNumColor = '#e04040';
-  const pinDotColor = '#40c060';
+  const pinDotColor = '#4ec9b0';
   const glyphColor = '#b0b8d0';
 
-  // Font sizes scaled to symbol size — smaller for large pin-count ICs
+  // Font sizes relative to the symbol body size.
+  // Compute pin spacing from body height and pin count on the busiest side.
   const pinCount = pins.length;
-  const baseFontSize = pinCount > 80 ? 1.2 : pinCount > 40 ? 1.6 : pinCount > 20 ? 2.0 : 2.6;
-  const numFontSize = baseFontSize * 0.85;
+  const bodyHeight = bh; // already scaled
+  const pinsPerSide = Math.ceil(pinCount / 2);
+  const pinSpacing = pinsPerSide > 1 ? bodyHeight / (pinsPerSide + 1) : bodyHeight;
+  // Font must be smaller than pin spacing to avoid overlap. Cap at 60% of spacing.
+  const maxFont = Math.max(pinSpacing * 0.55, 1.0);
+  const baseFontSize = Math.min(maxFont, pinCount > 40 ? 2.2 : pinCount > 16 ? 2.8 : 3.5);
+  const numFontSize = baseFontSize * 0.75;
 
   // Determine whether we have rich graphics or fall back to simple rectangle
   const hasGraphics = graphics && graphics.length > 0;
@@ -1160,14 +1280,32 @@ export function renderKiCadSymbol({
             width={bw} height={bh}
             fill={bodyFill}
             stroke={bodyStroke}
-            strokeWidth={0.8}
-            rx={0.5}
+            strokeWidth={0.6}
+            rx={1}
           />
           {/* IC notch marker at top center */}
-          <path
-            d={`M ${(bx1 + bx2) / 2 - 2} ${by1} A 2 2 0 0 0 ${(bx1 + bx2) / 2 + 2} ${by1}`}
-            fill="none" stroke={bodyStroke} strokeWidth={0.5}
-          />
+          {bw > 10 && (
+            <path
+              d={`M ${(bx1 + bx2) / 2 - 3} ${by1} A 3 3 0 0 0 ${(bx1 + bx2) / 2 + 3} ${by1}`}
+              fill="none" stroke={bodyStroke} strokeWidth={0.4}
+            />
+          )}
+          {/* Pin 1 dot marker (small filled circle near pin 1 inside body) */}
+          {pins.length > 0 && (() => {
+            const p1 = pins[0];
+            const p1Edge = pinBodyEdge(p1);
+            // Place dot 2 units inside the body from the body edge
+            const dotX = p1Edge.bx * s + (p1.direction === 'R' ? -2 : p1.direction === 'L' ? 2 : 0);
+            const dotY = p1Edge.by * s + (p1.direction === 'D' ? -2 : p1.direction === 'U' ? 2 : 0);
+            return (
+              <circle
+                cx={dotX} cy={dotY}
+                r={1}
+                fill={pinColor}
+                opacity={0.7}
+              />
+            );
+          })()}
         </>
       )}
 
@@ -1188,30 +1326,34 @@ export function renderKiCadSymbol({
         let numX: number, numY: number;
         let numAnchor: SvgTextAnchor;
 
+        // KiCad layout: pin name INSIDE body near edge, pin number OUTSIDE near tip
+        const nameInset = baseFontSize * 0.5;
+
+        const numDist = baseFontSize * 0.7;  // distance from pin line for number
         switch (p.direction) {
           case 'R':
-            nameX = edgeX + 1;  nameY = edgeY;
-            nameAnchor = 'start'; nameDy = -0.8;
-            numX = tipX - 0.5;  numY = tipY;
+            nameX = edgeX + nameInset;  nameY = edgeY;
+            nameAnchor = 'start'; nameDy = baseFontSize * 0.15;
+            numX = tipX - numDist;  numY = tipY - numDist;
             numAnchor = 'end';
             break;
           case 'L':
-            nameX = edgeX - 1;  nameY = edgeY;
-            nameAnchor = 'end'; nameDy = -0.8;
-            numX = tipX + 0.5;  numY = tipY;
+            nameX = edgeX - nameInset;  nameY = edgeY;
+            nameAnchor = 'end'; nameDy = baseFontSize * 0.15;
+            numX = tipX + numDist;  numY = tipY - numDist;
             numAnchor = 'start';
             break;
           case 'U':
-            nameX = edgeX; nameY = edgeY - 1;
-            nameAnchor = 'middle'; nameDx = 0.8;
-            numX = tipX; numY = tipY + 0.5;
-            numAnchor = 'middle';
+            nameX = edgeX + nameInset; nameY = edgeY + nameInset;
+            nameAnchor = 'start'; nameDx = 0;
+            numX = tipX + numDist; numY = tipY + numDist;
+            numAnchor = 'start';
             break;
           case 'D':
-            nameX = edgeX; nameY = edgeY + 1;
-            nameAnchor = 'middle'; nameDx = 0.8;
-            numX = tipX; numY = tipY - 0.5;
-            numAnchor = 'middle';
+            nameX = edgeX + nameInset; nameY = edgeY - nameInset;
+            nameAnchor = 'start'; nameDx = 0;
+            numX = tipX + numDist; numY = tipY - numDist;
+            numAnchor = 'start';
             break;
           default:
             nameX = edgeX; nameY = edgeY; nameAnchor = 'start';
@@ -1225,13 +1367,16 @@ export function renderKiCadSymbol({
               x1={edgeX} y1={edgeY}
               x2={tipX} y2={tipY}
               stroke={pinColor}
-              strokeWidth={0.5}
+              strokeWidth={0.4}
             />
-            {/* Connection dot at tip */}
+            {/* Small connection point at tip */}
             <circle
               cx={tipX} cy={tipY}
-              r={0.6}
-              fill={pinDotColor}
+              r={0.5}
+              fill="none"
+              stroke={pinDotColor}
+              strokeWidth={0.3}
+              opacity={0.4}
             />
             {/* Pin type glyph at body edge */}
             {renderPinTypeGlyph(edgeX, edgeY, dx, dy, p.type, p.style, glyphColor, i)}
@@ -1242,18 +1387,19 @@ export function renderKiCadSymbol({
               fill={pinNameColor}
               textAnchor={nameAnchor}
               dominantBaseline="middle"
-              style={{ fontFamily: 'monospace', userSelect: 'none' }}
+              style={{ fontFamily: "'Courier New', monospace", userSelect: 'none' }}
             >
               {p.name}
             </text>
-            {/* Pin number (outside, near tip) */}
+            {/* Pin number (outside, near tip — above pin line for H, beside for V) */}
             <text
-              x={numX} y={numY + (p.direction === 'R' || p.direction === 'L' ? 1.8 : 0)}
+              x={numX}
+              y={numY}
               fontSize={numFontSize}
               fill={pinNumColor}
               textAnchor={numAnchor}
               dominantBaseline="middle"
-              style={{ fontFamily: 'monospace', userSelect: 'none' }}
+              style={{ fontFamily: "'Courier New', monospace", userSelect: 'none' }}
             >
               {p.number}
             </text>
@@ -1376,6 +1522,67 @@ export function SymbolThumbnail({ type, size = 32 }: { type: string; size?: numb
       {renderSymbol({ type })}
     </svg>
   );
+}
+
+// ─── KiCad Symbol Thumbnail for palette ──────────────────────────────────
+// Tries to render a real KiCad symbol preview. Falls back to generic SymbolThumbnail.
+
+export function KiCadSymbolThumbnail({
+  symbolName,
+  fallbackType,
+  size = 28,
+}: {
+  symbolName: string;
+  fallbackType: string;
+  size?: number;
+}): React.ReactElement {
+  const [symbolData, setSymbolData] = useState<KiCadSymbolData | null>(null);
+  const [tried, setTried] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Lazy import to avoid circular deps — getCachedKiCadSymbol and fetchKiCadSymbol
+    // are in componentLibrary.ts
+    import('../store/componentLibrary').then(({ getCachedKiCadSymbol, fetchKiCadSymbol }) => {
+      if (cancelled) return;
+      // Synchronous cache check first
+      const cached = getCachedKiCadSymbol(symbolName);
+      if (cached) {
+        setSymbolData(cached);
+        setTried(true);
+        return;
+      }
+      // Async fetch
+      fetchKiCadSymbol(symbolName).then((data) => {
+        if (!cancelled && data) {
+          setSymbolData(data);
+        }
+        if (!cancelled) setTried(true);
+      });
+    });
+    return () => { cancelled = true; };
+  }, [symbolName]);
+
+  // If we have KiCad data, render a scaled-down version
+  if (symbolData) {
+    const bounds = getKiCadSymbolBounds(symbolData);
+    const bw = bounds.maxX - bounds.minX;
+    const bh = bounds.maxY - bounds.minY;
+    // Add padding
+    const pad = 4;
+    const vw = bw + pad * 2;
+    const vh = bh + pad * 2;
+    const vx = bounds.minX - pad;
+    const vy = bounds.minY - pad;
+    return (
+      <svg width={size} height={size} viewBox={`${vx} ${vy} ${vw} ${vh}`}>
+        {renderKiCadSymbol({ symbolData })}
+      </svg>
+    );
+  }
+
+  // Fallback to generic symbol thumbnail
+  return <SymbolThumbnail type={fallbackType} size={size} />;
 }
 
 export default renderSymbol;

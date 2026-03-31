@@ -1,10 +1,10 @@
 // ─── ComponentPalette.tsx ─ Left sidebar component library ─────────────────
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { LibComponent } from '../types';
 import { theme } from '../styles/theme';
 import { useEditorStore } from '../store/editorStore';
-import { componentLibrary, enrichWithKiCadSymbol } from '../store/componentLibrary';
-import { SYMBOL_DEFS, SymbolThumbnail } from './SymbolLibrary';
+import { componentLibrary, enrichWithKiCadSymbol, fetchKiCadSymbol } from '../store/componentLibrary';
+import { SYMBOL_DEFS, SymbolThumbnail, KiCadSymbolThumbnail } from './SymbolLibrary';
 import ComponentSearch from './ComponentSearch';
 import type { ComponentSearchResult } from '../api/componentSearch';
 
@@ -177,6 +177,54 @@ const ComponentPalette: React.FC = () => {
       .filter(Boolean) as LibComponent[];
   }, [favorites]);
 
+  // ─── Pre-fetch KiCad symbols for visible categories (Problem 2) ───
+  const prefetchedRef = useRef(new Set<string>());
+  useEffect(() => {
+    // Find all expanded categories and pre-fetch their symbols
+    const expandedCategories = Array.from(categories.entries())
+      .filter(([cat]) => !collapsed[cat]);
+
+    const symbolNames: string[] = [];
+    for (const [, items] of expandedCategories) {
+      for (const comp of items) {
+        if (!prefetchedRef.current.has(comp.name)) {
+          symbolNames.push(comp.name);
+          prefetchedRef.current.add(comp.name);
+        }
+      }
+    }
+
+    if (symbolNames.length === 0) return;
+
+    // Batch fetch in chunks of 20, using requestIdleCallback to avoid blocking UI
+    let idx = 0;
+    const fetchBatch = () => {
+      const batch = symbolNames.slice(idx, idx + 20);
+      if (batch.length === 0) return;
+      idx += 20;
+      // Fire-and-forget fetches
+      for (const name of batch) {
+        fetchKiCadSymbol(name).catch(() => {/* ignore */});
+      }
+      // Schedule next batch
+      if (idx < symbolNames.length) {
+        if (typeof requestIdleCallback !== 'undefined') {
+          requestIdleCallback(fetchBatch);
+        } else {
+          setTimeout(fetchBatch, 50);
+        }
+      }
+    };
+
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(fetchBatch);
+      return () => cancelIdleCallback(id);
+    } else {
+      const timer = setTimeout(fetchBatch, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [categories, collapsed]);
+
   const handleSelect = useCallback(async (comp: LibComponent) => {
     addRecentlyUsed(comp.id);
     // Show loading state while enriching with KiCad symbol data
@@ -319,7 +367,7 @@ const ComponentPalette: React.FC = () => {
             animation: 'spin 1s linear infinite',
           }}>...</div>
         ) : (
-          <SymbolThumbnail type={comp.symbol} size={28} />
+          <KiCadSymbolThumbnail symbolName={comp.name} fallbackType={comp.symbol} size={28} />
         )}
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <div style={styles.compName}>

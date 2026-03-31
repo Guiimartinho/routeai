@@ -205,20 +205,38 @@ function ComponentElement({
           pointerEvents="none"
         />
       )}
-      {/* Pin connection points — only show for non-KiCad symbols (KiCad renderer draws its own dots) */}
-      {!hasKiCadSymbol && comp.pins.map((pin, i) => (
-        <circle
-          key={`pin_${i}`}
-          cx={pin.x}
-          cy={pin.y}
-          r={0.8}
-          fill="none"
-          stroke={theme.schPinColor ?? '#44aa44'}
-          strokeWidth={0.3}
-          pointerEvents="none"
-          opacity={0.7}
-        />
-      ))}
+      {/* Pin connection points — always show for wire snapping.
+          For KiCad symbols, comp.pins already match KiCad coordinates (set by enrichment).
+          For generic ICs, comp.pins may be in icPinsLR coords (x=-40/40) which differ from
+          generateICSymbol coords (x=-20/20), so we use the generated symbol pin positions. */}
+      {(() => {
+        const symbolType = comp.symbol || comp.type;
+        let pinPositions = comp.pins;
+        if (!hasKiCadSymbol && symbolType === 'ic' && comp.pins.length > 0) {
+          // Use generateICSymbol pin positions which match the rendered symbol
+          const genDef = generateICSymbol(comp.pins.length);
+          if (genDef.pins.length === comp.pins.length) {
+            pinPositions = comp.pins.map((pin, idx) => ({
+              ...pin,
+              x: genDef.pins[idx].x,
+              y: genDef.pins[idx].y,
+            }));
+          }
+        }
+        return pinPositions.map((pin, i) => (
+          <circle
+            key={`pin_${i}`}
+            cx={pin.x}
+            cy={pin.y}
+            r={0.4}
+            fill="none"
+            stroke={theme.schPinColor ?? '#4ec9b0'}
+            strokeWidth={0.2}
+            pointerEvents="none"
+            opacity={0.6}
+          />
+        ));
+      })()}
       {/* Reference designator */}
       <text
         x={0} y={bounds.minY - 2}

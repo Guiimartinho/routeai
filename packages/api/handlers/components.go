@@ -243,12 +243,83 @@ func (h *ComponentHandler) GetSymbol(c *gin.Context) {
 
 	sym, ok := store.symbols[name]
 	if !ok {
-		// Fallback: case-insensitive search across all keys.
+		// Fallback 1: case-insensitive exact match across all keys.
 		for key, s := range store.symbols {
 			if strings.EqualFold(key, name) {
 				sym = s
 				ok = true
 				break
+			}
+		}
+	}
+	if !ok {
+		// Fallback 2: prefix match — find any symbol whose name starts with the query.
+		// E.g., query "stm32f103c8" matches symbol "stm32f103c8tx".
+		// Pick the shortest matching name (most specific match).
+		bestLen := -1
+		for key, s := range store.symbols {
+			if strings.HasPrefix(key, name) {
+				if bestLen < 0 || len(key) < bestLen {
+					sym = s
+					ok = true
+					bestLen = len(key)
+				}
+			}
+		}
+	}
+	if !ok {
+		// Fallback 3: reverse prefix — find any symbol whose name is a prefix of the query.
+		// E.g., query "stm32f103c8t6" matches symbol "stm32f103c8tx" via common prefix.
+		// Guard: the symbol name must be at least 60% of the query length to prevent
+		// false positives like symbol "L" (1 char) matching query "LM358" (5 chars).
+		bestLen := -1
+		minSymLen := int(float64(len(name)) * 0.6)
+		if minSymLen < 2 {
+			minSymLen = 2
+		}
+		for key, s := range store.symbols {
+			if len(key) >= minSymLen && strings.HasPrefix(name, key) {
+				if bestLen < 0 || len(key) > bestLen {
+					sym = s
+					ok = true
+					bestLen = len(key)
+				}
+			}
+		}
+	}
+	if !ok {
+		// Fallback 4: longest common prefix match.
+		// E.g., query "stm32f103c8t6" and symbol "stm32f103c8tx" share prefix "stm32f103c8t".
+		// Require common prefix to be at least max(6, 70% of query length) to avoid
+		// false matches on short queries.
+		minPrefixLen := int(float64(len(name)) * 0.7)
+		if minPrefixLen < 6 {
+			minPrefixLen = 6
+		}
+		bestPrefixLen := 0
+		for key, s := range store.symbols {
+			// Find common prefix length
+			shorter := len(name)
+			if len(key) < shorter {
+				shorter = len(key)
+			}
+			commonLen := 0
+			for i := 0; i < shorter; i++ {
+				if name[i] == key[i] {
+					commonLen++
+				} else {
+					break
+				}
+			}
+			if commonLen >= minPrefixLen && commonLen > bestPrefixLen {
+				bestPrefixLen = commonLen
+				sym = s
+				ok = true
+			} else if commonLen == bestPrefixLen && commonLen >= minPrefixLen && ok {
+				// Tie-break: prefer shorter symbol name (more specific)
+				if len(key) < len(sym.Name) {
+					sym = s
+				}
 			}
 		}
 	}

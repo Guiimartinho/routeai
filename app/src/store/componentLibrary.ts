@@ -1573,6 +1573,28 @@ export function searchComponents(query: string): LibComponent[] {
 
 import type { KiCadSymbolData } from '../components/SymbolLibrary';
 
+/** Map frontend symbol type to KiCad symbol name for basic components */
+const KICAD_SYMBOL_MAP: Record<string, string> = {
+  'resistor': 'R',
+  'capacitor': 'C',
+  'capacitor_polarized': 'C_Polarized',
+  'inductor': 'L',
+  'diode': 'D',
+  'led': 'LED',
+  'zener': 'D_Zener',
+  'schottky': 'D_Schottky',
+  'tvs': 'D_TVS',
+  'npn': 'Q_NPN_BEC',
+  'pnp': 'Q_PNP_BEC',
+  'nmos': 'Q_NMOS_GDS',
+  'pmos': 'Q_PMOS_GDS',
+  'opamp': 'Amplifier_Operational',
+  'crystal': 'Crystal',
+  'fuse': 'Fuse',
+  'switch': 'SW_Push',
+  'ferrite': 'FerriteBead',
+};
+
 const _kicadSymbolCache = new Map<string, KiCadSymbolData>();
 const _kicadFetchInFlight = new Map<string, Promise<KiCadSymbolData | null>>();
 
@@ -1624,8 +1646,32 @@ export function getCachedKiCadSymbol(name: string): KiCadSymbolData | undefined 
  * updates its pins array to match the real KiCad pin positions.
  */
 export async function enrichWithKiCadSymbol(comp: LibComponent): Promise<LibComponent> {
-  // Try fetching by component name (e.g. "STM32F103C8" -> "STM32F103C8Tx")
-  const namesToTry = [comp.name, comp.mpn, comp.id];
+  // Build a set of candidate names to try, in priority order.
+  const namesToTry = new Set<string>();
+
+  // 1. Try explicit KiCad symbol map first (for basic passive/discrete components).
+  //    This avoids fuzzy-matching footprint names like "R_0603" against symbol "R".
+  const mappedName = KICAD_SYMBOL_MAP[comp.symbol];
+  if (mappedName) namesToTry.add(mappedName);
+
+  // 2. Original names (component name, MPN, id)
+  if (comp.name) namesToTry.add(comp.name);
+  if (comp.mpn) namesToTry.add(comp.mpn);
+  if (comp.id) namesToTry.add(comp.id);
+
+  // 3. KiCad naming conventions for ICs (Tx/x suffix patterns)
+  if (comp.symbol === 'ic' || comp.symbol === 'opamp') {
+    if (comp.name) {
+      namesToTry.add(comp.name + 'Tx');  // LQFP/TQFP packages
+      namesToTry.add(comp.name + 'x');   // Generic suffix
+    }
+    if (comp.mpn) {
+      // Remove trailing package code (e.g., "STM32F103C8T6" -> "STM32F103C8T" -> try with "x")
+      const mpnBase = comp.mpn.replace(/\d+$/, '');  // Remove trailing digits
+      namesToTry.add(mpnBase + 'x');
+    }
+  }
+
   for (const n of namesToTry) {
     if (!n) continue;
     const sym = await fetchKiCadSymbol(n);
@@ -1637,20 +1683,32 @@ export async function enrichWithKiCadSymbol(comp: LibComponent): Promise<LibComp
         number: kp.number,
         x: kp.x,
         y: kp.y,
-        type: (kp.type === 'bidirectional' ? 'bidirectional'
-          : kp.type === 'tri_state' ? 'bidirectional'
-          : kp.type === 'input' ? 'input'
-          : kp.type === 'output' ? 'output'
-          : kp.type === 'open_collector' ? 'output'
-          : kp.type === 'open_emitter' ? 'output'
-          : kp.type === 'power' ? 'power'
-          : kp.type === 'power_flag' ? 'power'
-          : kp.type === 'not_connected' ? 'passive'
-          : kp.type === 'unspecified' ? 'passive'
-          : 'passive') as import('../types').PinType,
+        type: mapPinType(kp.type) as import('../types').PinType,
       }));
       return comp;
     }
   }
   return comp;
+}
+
+/** Map KiCad pin electrical type to our simplified PinType */
+function mapPinType(kicadType: string): string {
+  switch (kicadType) {
+    case 'bidirectional':
+    case 'tri_state':
+      return 'bidirectional';
+    case 'input':
+      return 'input';
+    case 'output':
+    case 'open_collector':
+    case 'open_emitter':
+      return 'output';
+    case 'power':
+    case 'power_in':
+    case 'power_out':
+    case 'power_flag':
+      return 'power';
+    default:
+      return 'passive';
+  }
 }
