@@ -197,6 +197,23 @@ routeai/
 - **Docker** and Docker Compose
 - **CMake** 3.20+ and **Conan** (for C++ routing engine)
 
+### GPU Requirements
+
+RouteAI runs LLM inference **locally via Ollama**. No cloud APIs required.
+
+| GPU | VRAM | T3 (Chat/Validation) | T2 (Analysis/DSL) | T1 (Deep Review) |
+|-----|------|---------------------|-------------------|-----------------|
+| RTX 3050/4050 | 6-8 GB | Phi-3.5 (3.8B) | Qwen2.5 (7B) | Decomposed |
+| RTX 3060/4060/4070 | 10-12 GB | Qwen2.5 (7B) | Qwen2.5-Coder (14B) | Decomposed |
+| RTX 4060 Ti/4080 | 16 GB | Qwen2.5 (7B) | Qwen2.5-Coder (14B) | Decomposed |
+| RTX 4090 | 24 GB | Qwen2.5 (7B) | Qwen2.5 (32B) | Direct |
+
+Run the setup script to auto-detect your GPU and pull the right models:
+
+```bash
+./scripts/setup_ollama.sh
+```
+
 ### Quick Start
 
 1. **Clone the repository**
@@ -266,8 +283,7 @@ MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 
-# LLM Provider (choose one)
-ANTHROPIC_API_KEY=your-api-key
+# LLM Provider (local Ollama — run ./scripts/setup_ollama.sh first)
 OLLAMA_BASE_URL=http://localhost:11434
 
 # JWT
