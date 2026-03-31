@@ -135,6 +135,9 @@ jobs:
           cd packages/solver && poetry install --no-interaction && cd ../..
           cd packages/intelligence && poetry install --no-interaction && cd ../..
 
+      - name: Install test dependencies
+        run: pip install pytest
+
       - name: Run integration tests
         run: |
           PYTHONPATH="packages/core/src:packages/intelligence/src:packages/solver/src" \

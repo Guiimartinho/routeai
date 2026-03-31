@@ -399,8 +399,8 @@ func (h *ComponentHandler) SearchSymbols(c *gin.Context) {
 // gracefully return {"offline": true} when the ML service is unreachable.
 // ---------------------------------------------------------------------------
 
-// mlServiceURL returns the configured ML service base URL.
-func mlServiceURL() string {
+// pcbPartsMLURL returns the configured ML service base URL for PCBParts proxying.
+func pcbPartsMLURL() string {
 	u := os.Getenv("ML_SERVICE_URL")
 	if u == "" {
 		u = "http://localhost:8001"
@@ -408,10 +408,10 @@ func mlServiceURL() string {
 	return strings.TrimRight(u, "/")
 }
 
-// proxyToML forwards a GET request to the ML service and writes the response.
-func proxyToML(c *gin.Context, path string) {
+// pcbPartsProxy forwards a GET request to the ML service and writes the response.
+func pcbPartsProxy(c *gin.Context, path string) {
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(mlServiceURL() + path)
+	resp, err := client.Get(pcbPartsMLURL() + path)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "PCBParts service unavailable", "offline": true})
 		return
@@ -435,7 +435,7 @@ func (h *ComponentHandler) PCBPartsSearch(c *gin.Context) {
 	if subcategory != "" {
 		path += "&subcategory=" + url.QueryEscape(subcategory)
 	}
-	proxyToML(c, path)
+	pcbPartsProxy(c, path)
 }
 
 // PCBPartsAlternatives handles GET /api/pcbparts/alternatives/:lcsc
@@ -445,7 +445,7 @@ func (h *ComponentHandler) PCBPartsAlternatives(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "lcsc parameter required"})
 		return
 	}
-	proxyToML(c, fmt.Sprintf("/ml/pcbparts/alternatives/%s", url.PathEscape(lcsc)))
+	pcbPartsProxy(c, fmt.Sprintf("/ml/pcbparts/alternatives/%s", url.PathEscape(lcsc)))
 }
 
 // PCBPartsStock handles GET /api/pcbparts/stock/:lcsc
@@ -455,7 +455,7 @@ func (h *ComponentHandler) PCBPartsStock(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "lcsc parameter required"})
 		return
 	}
-	proxyToML(c, fmt.Sprintf("/ml/pcbparts/stock/%s", url.PathEscape(lcsc)))
+	pcbPartsProxy(c, fmt.Sprintf("/ml/pcbparts/stock/%s", url.PathEscape(lcsc)))
 }
 
 // PCBPartsSensors handles GET /api/pcbparts/sensors?measurement=...&protocol=...&platform=...
@@ -472,7 +472,7 @@ func (h *ComponentHandler) PCBPartsSensors(c *gin.Context) {
 	if p := c.Query("platform"); p != "" {
 		path += "&platform=" + url.QueryEscape(p)
 	}
-	proxyToML(c, path)
+	pcbPartsProxy(c, path)
 }
 
 // PCBPartsKiCad handles GET /api/pcbparts/kicad/:id
@@ -482,7 +482,7 @@ func (h *ComponentHandler) PCBPartsKiCad(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "id parameter required"})
 		return
 	}
-	proxyToML(c, fmt.Sprintf("/ml/pcbparts/kicad/%s", url.PathEscape(id)))
+	pcbPartsProxy(c, fmt.Sprintf("/ml/pcbparts/kicad/%s", url.PathEscape(id)))
 }
 
 // PCBPartsBoards handles GET /api/pcbparts/boards?q=...
@@ -492,7 +492,7 @@ func (h *ComponentHandler) PCBPartsBoards(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' required"})
 		return
 	}
-	proxyToML(c, fmt.Sprintf("/ml/pcbparts/boards?q=%s", url.QueryEscape(query)))
+	pcbPartsProxy(c, fmt.Sprintf("/ml/pcbparts/boards?q=%s", url.QueryEscape(query)))
 }
 
 // PCBPartsDesignRules handles GET /api/pcbparts/design-rules?topic=...
@@ -501,7 +501,7 @@ func (h *ComponentHandler) PCBPartsDesignRules(c *gin.Context) {
 	if topic := c.Query("topic"); topic != "" {
 		path += "?topic=" + url.QueryEscape(topic)
 	}
-	proxyToML(c, path)
+	pcbPartsProxy(c, path)
 }
 
 // BrowseComponents handles GET /api/v1/components/browse?category=mcu&limit=40
