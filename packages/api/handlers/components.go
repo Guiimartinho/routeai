@@ -2,12 +2,16 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -387,6 +391,117 @@ func (h *ComponentHandler) SearchSymbols(c *gin.Context) {
 		"total":   len(results),
 		"limit":   limit,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// PCBParts MCP proxy — forward requests to the ML service which calls
+// the PCBParts MCP endpoint (https://pcbparts.dev/mcp).  All handlers
+// gracefully return {"offline": true} when the ML service is unreachable.
+// ---------------------------------------------------------------------------
+
+// mlServiceURL returns the configured ML service base URL.
+func mlServiceURL() string {
+	u := os.Getenv("ML_SERVICE_URL")
+	if u == "" {
+		u = "http://localhost:8001"
+	}
+	return strings.TrimRight(u, "/")
+}
+
+// proxyToML forwards a GET request to the ML service and writes the response.
+func proxyToML(c *gin.Context, path string) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(mlServiceURL() + path)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "PCBParts service unavailable", "offline": true})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, "application/json", body)
+}
+
+// PCBPartsSearch handles GET /api/pcbparts/search?q=...&subcategory=...&limit=...
+func (h *ComponentHandler) PCBPartsSearch(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' required"})
+		return
+	}
+	limit := c.DefaultQuery("limit", "20")
+	subcategory := c.Query("subcategory")
+
+	path := fmt.Sprintf("/ml/pcbparts/search?q=%s&limit=%s", url.QueryEscape(query), limit)
+	if subcategory != "" {
+		path += "&subcategory=" + url.QueryEscape(subcategory)
+	}
+	proxyToML(c, path)
+}
+
+// PCBPartsAlternatives handles GET /api/pcbparts/alternatives/:lcsc
+func (h *ComponentHandler) PCBPartsAlternatives(c *gin.Context) {
+	lcsc := c.Param("lcsc")
+	if lcsc == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "lcsc parameter required"})
+		return
+	}
+	proxyToML(c, fmt.Sprintf("/ml/pcbparts/alternatives/%s", url.PathEscape(lcsc)))
+}
+
+// PCBPartsStock handles GET /api/pcbparts/stock/:lcsc
+func (h *ComponentHandler) PCBPartsStock(c *gin.Context) {
+	lcsc := c.Param("lcsc")
+	if lcsc == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "lcsc parameter required"})
+		return
+	}
+	proxyToML(c, fmt.Sprintf("/ml/pcbparts/stock/%s", url.PathEscape(lcsc)))
+}
+
+// PCBPartsSensors handles GET /api/pcbparts/sensors?measurement=...&protocol=...&platform=...
+func (h *ComponentHandler) PCBPartsSensors(c *gin.Context) {
+	measurement := c.Query("measurement")
+	if measurement == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "measurement parameter required"})
+		return
+	}
+	path := fmt.Sprintf("/ml/pcbparts/sensors?measurement=%s", url.QueryEscape(measurement))
+	if p := c.Query("protocol"); p != "" {
+		path += "&protocol=" + url.QueryEscape(p)
+	}
+	if p := c.Query("platform"); p != "" {
+		path += "&platform=" + url.QueryEscape(p)
+	}
+	proxyToML(c, path)
+}
+
+// PCBPartsKiCad handles GET /api/pcbparts/kicad/:id
+func (h *ComponentHandler) PCBPartsKiCad(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id parameter required"})
+		return
+	}
+	proxyToML(c, fmt.Sprintf("/ml/pcbparts/kicad/%s", url.PathEscape(id)))
+}
+
+// PCBPartsBoards handles GET /api/pcbparts/boards?q=...
+func (h *ComponentHandler) PCBPartsBoards(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' required"})
+		return
+	}
+	proxyToML(c, fmt.Sprintf("/ml/pcbparts/boards?q=%s", url.QueryEscape(query)))
+}
+
+// PCBPartsDesignRules handles GET /api/pcbparts/design-rules?topic=...
+func (h *ComponentHandler) PCBPartsDesignRules(c *gin.Context) {
+	path := "/ml/pcbparts/design-rules"
+	if topic := c.Query("topic"); topic != "" {
+		path += "?topic=" + url.QueryEscape(topic)
+	}
+	proxyToML(c, path)
 }
 
 // BrowseComponents handles GET /api/v1/components/browse?category=mcu&limit=40

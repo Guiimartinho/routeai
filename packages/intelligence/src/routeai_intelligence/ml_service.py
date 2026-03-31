@@ -1258,6 +1258,98 @@ def _pattern_based_constraints(req: ConstraintRequest) -> ConstraintResponse:
     )
 
 
+# ---------------------------------------------------------------------------
+# PCBParts MCP proxy endpoints (optional online data source)
+# ---------------------------------------------------------------------------
+
+_PCBPARTS_CACHE_DIR = "data/component_library/pcbparts_cache"
+
+
+def _get_pcbparts() -> Any:
+    """Lazy-import and return the PCBParts singleton client."""
+    from routeai_intelligence.library.pcbparts_client import get_pcbparts_client
+
+    return get_pcbparts_client(cache_dir=_PCBPARTS_CACHE_DIR)
+
+
+@app.get("/ml/pcbparts/search")
+async def pcbparts_search(
+    q: str,
+    subcategory: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Search JLCPCB catalog via PCBParts MCP. Offline-safe."""
+    client = _get_pcbparts()
+    if not await client.is_available():
+        return {"parts": [], "offline": True, "message": "PCBParts not reachable"}
+    parts = await client.search_components(q, subcategory=subcategory, limit=limit)
+    return {"parts": parts, "offline": False}
+
+
+@app.get("/ml/pcbparts/alternatives/{lcsc}")
+async def pcbparts_alternatives(lcsc: str) -> dict[str, Any]:
+    """Find alternative components for a given LCSC part code."""
+    client = _get_pcbparts()
+    if not await client.is_available():
+        return {"alternatives": [], "offline": True}
+    alts = await client.find_alternatives(lcsc)
+    return {"alternatives": alts, "offline": False}
+
+
+@app.get("/ml/pcbparts/stock/{lcsc}")
+async def pcbparts_stock(lcsc: str) -> dict[str, Any]:
+    """Check real-time stock and pricing for a JLCPCB part."""
+    client = _get_pcbparts()
+    if not await client.is_available():
+        return {"stock": None, "offline": True}
+    stock = await client.check_stock(lcsc)
+    return {"stock": stock, "offline": False}
+
+
+@app.get("/ml/pcbparts/sensors")
+async def pcbparts_sensors(
+    measurement: str,
+    protocol: str | None = None,
+    platform: str | None = None,
+) -> dict[str, Any]:
+    """Recommend sensor ICs by measurement type."""
+    client = _get_pcbparts()
+    if not await client.is_available():
+        return {"sensors": [], "offline": True}
+    sensors = await client.recommend_sensors(measurement, protocol=protocol, platform=platform)
+    return {"sensors": sensors, "offline": False}
+
+
+@app.get("/ml/pcbparts/kicad/{cse_id}")
+async def pcbparts_kicad(cse_id: str) -> dict[str, Any]:
+    """Download KiCad symbol and footprint from SamacSys via PCBParts."""
+    client = _get_pcbparts()
+    if not await client.is_available():
+        return {"symbol": None, "offline": True}
+    symbol = await client.download_kicad_symbol(cse_id)
+    return {"symbol": symbol, "offline": False}
+
+
+@app.get("/ml/pcbparts/boards")
+async def pcbparts_boards(q: str) -> dict[str, Any]:
+    """Search open-source reference board schematics."""
+    client = _get_pcbparts()
+    if not await client.is_available():
+        return {"boards": [], "offline": True}
+    boards = await client.search_boards(q)
+    return {"boards": boards, "offline": False}
+
+
+@app.get("/ml/pcbparts/design-rules")
+async def pcbparts_design_rules(topic: str | None = None) -> dict[str, Any]:
+    """Get curated PCB design rules."""
+    client = _get_pcbparts()
+    if not await client.is_available():
+        return {"rules": [], "offline": True}
+    rules = await client.get_design_rules(topic)
+    return {"rules": rules, "offline": False}
+
+
 def _build_board_design(board_data: dict[str, Any]) -> Any:
     """Convert a board_data JSON dict into a solver BoardDesign instance.
 

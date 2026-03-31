@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { theme } from '../styles/theme';
 import { searchComponents, type ComponentSearchResult, type ComponentPriceBreak } from '../api/componentSearch';
+import { searchPCBParts, type PCBPartResult } from '../api/pcbparts';
 
 // ─── Category filter tabs ───────────────────────────────────────────────────
 
@@ -26,10 +27,11 @@ const CATEGORY_TABS = [
 // ─── Source badge colors ────────────────────────────────────────────────────
 
 const SOURCE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  lcsc:   { bg: theme.greenDim, text: theme.green,  label: 'LCSC' },
-  local:  { bg: theme.blueDim,  text: theme.blue,   label: 'Local' },
-  kicad:  { bg: theme.purpleDim, text: theme.purple, label: 'KiCad' },
-  digikey:{ bg: theme.orangeDim, text: theme.orange, label: 'DigiKey' },
+  lcsc:     { bg: theme.greenDim,  text: theme.green,  label: 'LCSC' },
+  local:    { bg: theme.blueDim,   text: theme.blue,   label: 'Local' },
+  kicad:    { bg: theme.purpleDim, text: theme.purple,  label: 'KiCad' },
+  digikey:  { bg: theme.orangeDim, text: theme.orange,  label: 'DigiKey' },
+  pcbparts: { bg: theme.greenDim,  text: theme.green,   label: 'PCBParts' },
 };
 
 // ─── Stock color helper ─────────────────────────────────────────────────────
@@ -340,6 +342,8 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
 }) => {
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<ComponentSearchResult[]>([]);
+  const [onlineResults, setOnlineResults] = useState<ComponentSearchResult[]>([]);
+  const [pcbpartsOffline, setPcbpartsOffline] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<ComponentSearchResult | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number>(-1);
@@ -363,10 +367,27 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
     }
   }, [initialQuery]);
 
-  // Debounced search
+  // Convert a PCBPartResult to a ComponentSearchResult for unified display
+  const pcbpartToLocal = useCallback((p: PCBPartResult): ComponentSearchResult => ({
+    mpn: p.mpn || p.lcsc || '',
+    manufacturer: p.manufacturer || '',
+    description: p.description || '',
+    category: p.category || '',
+    package: p.package || '',
+    price: p.price != null ? [{ qty: 1, price: p.price }] : undefined,
+    stock: p.stock ?? undefined,
+    datasheet: p.datasheet || undefined,
+    lcscCode: p.lcsc || undefined,
+    source: 'pcbparts' as any,
+    hasSymbol: p.hasSymbol ?? false,
+    hasFootprint: p.hasFootprint ?? false,
+  }), []);
+
+  // Debounced search — runs local + PCBParts in parallel
   const doSearch = useCallback(async (q: string, category?: string) => {
     if (!q.trim()) {
       setResults([]);
+      setOnlineResults([]);
       setSelected(null);
       setLoading(false);
       return;
@@ -375,20 +396,34 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
     setLoading(true);
     const t0 = performance.now();
     try {
-      const res = await searchComponents(q, {
-        category: category === 'all' ? undefined : category,
-        limit: 60,
-      });
-      setResults(res);
+      // Run both searches in parallel — PCBParts never blocks local results
+      const [localRes, onlineRes] = await Promise.all([
+        searchComponents(q, {
+          category: category === 'all' ? undefined : category,
+          limit: 60,
+        }),
+        searchPCBParts(q, {
+          subcategory: category === 'all' ? undefined : category,
+          limit: 30,
+        }).catch(() => ({ parts: [] as PCBPartResult[], offline: true })),
+      ]);
+
+      setResults(localRes);
       setSelected(null);
       setSearchTime(Math.round(performance.now() - t0));
+
+      // Convert PCBParts results to the unified format
+      const online = (onlineRes.parts || []).map(pcbpartToLocal);
+      setOnlineResults(online);
+      setPcbpartsOffline(onlineRes.offline ?? false);
     } catch (err) {
       console.error('Search failed:', err);
       setResults([]);
+      setOnlineResults([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pcbpartToLocal]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -414,7 +449,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
   }, [onClose, results, hoveredIdx]);
 
   // Filter results based on category tab
-  const filteredResults = useMemo(() => {
+  const filteredLocalResults = useMemo(() => {
     if (activeTab === 'all') return results;
     const tab = activeTab.toLowerCase();
     return results.filter(r => {
@@ -422,6 +457,21 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
       return text.includes(tab);
     });
   }, [results, activeTab]);
+
+  const filteredOnlineResults = useMemo(() => {
+    if (activeTab === 'all') return onlineResults;
+    const tab = activeTab.toLowerCase();
+    return onlineResults.filter(r => {
+      const text = `${r.category} ${r.description} ${r.mpn}`.toLowerCase();
+      return text.includes(tab);
+    });
+  }, [onlineResults, activeTab]);
+
+  // Combined for keyboard navigation and counting
+  const filteredResults = useMemo(
+    () => [...filteredLocalResults, ...filteredOnlineResults],
+    [filteredLocalResults, filteredOnlineResults],
+  );
 
   const handlePlaceSchematic = useCallback(() => {
     if (selected && onPlaceInSchematic) {
@@ -513,14 +563,15 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredResults.map((r, i) => {
+                  {/* Local library results */}
+                  {filteredLocalResults.map((r, i) => {
                     const isSelected = selected === r;
                     const isHovered = hoveredIdx === i;
                     const badge = SOURCE_BADGE[r.source] || SOURCE_BADGE.local;
 
                     return (
                       <tr
-                        key={`${r.mpn}-${r.source}-${i}`}
+                        key={`local-${r.mpn}-${r.source}-${i}`}
                         style={{
                           ...s.tr,
                           ...(isHovered ? s.trHover : {}),
@@ -528,6 +579,77 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
                         }}
                         onClick={() => setSelected(r)}
                         onMouseEnter={() => setHoveredIdx(i)}
+                        onMouseLeave={() => setHoveredIdx(-1)}
+                      >
+                        <td style={{ ...s.td, fontWeight: 600, color: theme.blue }}>
+                          {r.mpn || '--'}
+                        </td>
+                        <td style={s.td}>{r.manufacturer || '--'}</td>
+                        <td style={{ ...s.td, maxWidth: 300, color: theme.textSecondary }}>
+                          {r.description || '--'}
+                        </td>
+                        <td style={{ ...s.td, fontFamily: theme.fontMono, fontSize: theme.fontXs }}>
+                          {r.package || '--'}
+                        </td>
+                        <td style={s.td}>
+                          {r.price && r.price.length > 0
+                            ? `$${r.price[0].price.toFixed(4)}`
+                            : '--'}
+                        </td>
+                        <td style={{ ...s.td, color: stockColor(r.stock), fontWeight: 600 }}>
+                          {stockLabel(r.stock)}
+                        </td>
+                        <td style={s.td}>
+                          <span style={{
+                            ...s.badge,
+                            background: badge.bg,
+                            color: badge.text,
+                          }}>
+                            {badge.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* Online (PCBParts) section separator */}
+                  {filteredOnlineResults.length > 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        style={{
+                          padding: `${theme.sp2} ${theme.sp3}`,
+                          background: theme.bg2,
+                          borderBottom: theme.border,
+                          fontSize: theme.fontXs,
+                          fontWeight: 600,
+                          color: theme.textSecondary,
+                          letterSpacing: '0.3px',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Online (JLCPCB / PCBParts) — {filteredOnlineResults.length} results
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Online results */}
+                  {filteredOnlineResults.map((r, i) => {
+                    const globalIdx = filteredLocalResults.length + i;
+                    const isSelected = selected === r;
+                    const isHovered = hoveredIdx === globalIdx;
+                    const badge = SOURCE_BADGE[r.source] || SOURCE_BADGE.pcbparts;
+
+                    return (
+                      <tr
+                        key={`online-${r.mpn}-${r.source}-${i}`}
+                        style={{
+                          ...s.tr,
+                          ...(isHovered ? s.trHover : {}),
+                          ...(isSelected ? s.trSelected : {}),
+                        }}
+                        onClick={() => setSelected(r)}
+                        onMouseEnter={() => setHoveredIdx(globalIdx)}
                         onMouseLeave={() => setHoveredIdx(-1)}
                       >
                         <td style={{ ...s.td, fontWeight: 600, color: theme.blue }}>
@@ -722,10 +844,29 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
             {filteredResults.length > 0
               ? `${filteredResults.length} result${filteredResults.length !== 1 ? 's' : ''}`
               : 'Ready'}
+            {pcbpartsOffline && query.trim() && (
+              <span style={{ marginLeft: 8, color: theme.orange, fontSize: theme.fontXs }}>
+                Offline — showing local results only
+              </span>
+            )}
           </span>
-          {searchTime > 0 && results.length > 0 && (
-            <span>{searchTime}ms</span>
-          )}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {!pcbpartsOffline && onlineResults.length > 0 && (
+              <span style={{
+                fontSize: '9px',
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: theme.radiusFull,
+                background: theme.greenDim,
+                color: theme.green,
+              }}>
+                575K+ online
+              </span>
+            )}
+            {searchTime > 0 && results.length > 0 && (
+              <span>{searchTime}ms</span>
+            )}
+          </span>
         </div>
       </div>
     </div>

@@ -162,6 +162,20 @@ func main() {
 	}
 
 	// -----------------------------------------------------------------------
+	// PCBParts MCP proxy (no auth — optional online component data source)
+	// -----------------------------------------------------------------------
+	pcbparts := router.Group("/api/pcbparts")
+	{
+		pcbparts.GET("/search", componentHandler.PCBPartsSearch)
+		pcbparts.GET("/alternatives/:lcsc", componentHandler.PCBPartsAlternatives)
+		pcbparts.GET("/stock/:lcsc", componentHandler.PCBPartsStock)
+		pcbparts.GET("/sensors", componentHandler.PCBPartsSensors)
+		pcbparts.GET("/kicad/:id", componentHandler.PCBPartsKiCad)
+		pcbparts.GET("/boards", componentHandler.PCBPartsBoards)
+		pcbparts.GET("/design-rules", componentHandler.PCBPartsDesignRules)
+	}
+
+	// -----------------------------------------------------------------------
 	// Protected routes (require JWT)
 	// -----------------------------------------------------------------------
 	protected := router.Group("/api/v1")

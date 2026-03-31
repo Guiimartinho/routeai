@@ -20,6 +20,7 @@ from routeai_intelligence.library.lcsc_provider import LCSCProvider
 from routeai_intelligence.library.kicad_lib_provider import KiCadLibProvider
 from routeai_intelligence.library.eagle_lib_provider import EagleLibProvider
 from routeai_intelligence.library.easyeda_provider import EasyEDAProvider
+from routeai_intelligence.library.pcbparts_client import PCBPartsClient, get_pcbparts_client
 
 __all__ = [
     "UnifiedComponentSearch",
@@ -34,4 +35,6 @@ __all__ = [
     "KiCadLibProvider",
     "EagleLibProvider",
     "EasyEDAProvider",
+    "PCBPartsClient",
+    "get_pcbparts_client",
 ]
