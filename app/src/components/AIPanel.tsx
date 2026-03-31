@@ -6,6 +6,8 @@ import { useProjectStore } from '../store/projectStore';
 import { auditSchematic, summarizeSuggestions } from '../engine/componentSuggester';
 import { runDRC } from '../engine/drcEngine';
 import type { SchematicState, BoardState, SchNet, SchComponent, BrdComponent } from '../types';
+import { fetchGPUProfile, getBestAvailableModel } from '../hooks/useOllama';
+import type { GPUProfile, TaskType } from '../hooks/useOllama';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -364,8 +366,25 @@ const AIPanel: React.FC<AIPanelProps> = (props) => {
   // All Ollama calls go through Go backend proxy
   const ollamaUrl = '/api/ollama';
   const [showSettings, setShowSettings] = useState(false);
+  const [gpuProfile, setGpuProfile] = useState<GPUProfile | null>(null);
+  const [modelStatusText, setModelStatusText] = useState<string | null>(null);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const gpuProfileLoaded = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Lazy GPU profile fetch (only when panel is visible) ──
+  useEffect(() => {
+    if (!visible || gpuProfileLoaded.current) return;
+    gpuProfileLoaded.current = true;
+    fetchGPUProfile().then(profile => {
+      if (profile) {
+        setGpuProfile(profile);
+        // Auto-set model from profile resident model
+        setOllamaModel(profile.tiers.t3_fast);
+      }
+    });
+  }, [visible]);
 
   // ── Build design context (memoized) ──
   const designContext = useMemo(
@@ -512,11 +531,36 @@ ${designContext}
         ? `The user asked: "${userMessage}"\n\nHere is the automated analysis result:\n\n${localAnalysis}\n\nPlease provide additional expert commentary, recommendations, and any issues the automated check may have missed. Reference specific components and nets from the design.`
         : userMessage;
 
+      // Determine task type from handler for tier-aware model selection
+      const taskType: TaskType =
+        quickHandler === 'review' || quickHandler === 'power' ? 'structured' :
+        quickHandler === 'missing' || quickHandler === 'bom' ? 'fast' :
+        'fast';
+
+      // Resolve best model for this task type
+      let targetModel = ollamaModel;
+      if (gpuProfile) {
+        const best = await getBestAvailableModel(taskType);
+        targetModel = best.model;
+
+        // Detect model swap (any non-fast task may require loading a larger model)
+        const needsSwap = targetModel !== gpuProfile.tiers.t3_fast
+          && taskType !== 'fast';
+        if (needsSwap) {
+          setIsSwapping(true);
+          setModelStatusText(`Switching to ${targetModel}...`);
+        } else {
+          setModelStatusText(`Analyzing with ${targetModel}...`);
+        }
+      } else {
+        setModelStatusText(`Analyzing with ${targetModel}...`);
+      }
+
       const response = await fetch(`${ollamaUrl}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: ollamaModel,
+          model: targetModel,
           messages: [
             { role: 'system', content: systemPrompt },
             ...messages.filter(m => m.role !== 'system').map(m => ({
@@ -605,8 +649,12 @@ ${designContext}
       setMessages(prev => prev.map(m =>
         m.id === assistantMsgId ? { ...m, content: fullContent, severity, toolUsed } : m
       ));
+      setModelStatusText(null);
+      setIsSwapping(false);
     } catch (err: any) {
       setStreaming(false);
+      setModelStatusText(null);
+      setIsSwapping(false);
       // Fallback: if Ollama is unavailable, use the local analysis alone or generate a context-aware fallback
       let content: string;
       if (localAnalysis) {
@@ -628,7 +676,7 @@ ${designContext}
     }
 
     setLoading(false);
-  }, [messages, ollamaModel, buildSystemPrompt, handleLocalAnalysis]);
+  }, [messages, ollamaModel, ollamaUrl, buildSystemPrompt, handleLocalAnalysis, gpuProfile]);
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
@@ -675,6 +723,23 @@ ${designContext}
       <div style={styles.contextBar}>
         <span style={styles.contextDot} />
         <span style={styles.contextText}>{designSummary}</span>
+      </div>
+
+      {/* GPU status indicator */}
+      <div style={styles.gpuBar}>
+        {gpuProfile ? (
+          <>
+            <span style={styles.gpuChip}>{'\u2B22'}</span>
+            <span style={styles.gpuText}>
+              {gpuProfile.gpu.name} {'\u2022'} {gpuProfile.profile.vram_gb}GB VRAM {'\u2022'} Model: {ollamaModel || 'detecting...'}
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ ...styles.gpuChip, color: theme.textMuted }}>{'\u2B22'}</span>
+            <span style={styles.gpuText}>GPU: detecting...</span>
+          </>
+        )}
       </div>
 
       {/* Settings */}
@@ -844,13 +909,21 @@ ${designContext}
                 <div style={{ ...styles.dot, animationDelay: '0.2s' }} />
                 <div style={{ ...styles.dot, animationDelay: '0.4s' }} />
               </div>
-              <LoadingDots />
+              {modelStatusText ? (
+                <span style={{ color: isSwapping ? theme.orange : theme.textMuted, fontSize: theme.fontXs, fontFamily: theme.fontMono }}>
+                  {modelStatusText}
+                </span>
+              ) : (
+                <LoadingDots />
+              )}
             </div>
           </div>
         )}
         {streaming && (
           <div style={styles.typingIndicator}>
-            <span style={{ color: theme.purple, fontSize: theme.fontXs, fontFamily: theme.fontMono }}>typing...</span>
+            <span style={{ color: theme.purple, fontSize: theme.fontXs, fontFamily: theme.fontMono }}>
+              {modelStatusText || 'typing...'}
+            </span>
           </div>
         )}
 
@@ -1101,6 +1174,28 @@ const styles: Record<string, React.CSSProperties> = {
   contextText: {
     color: theme.textMuted,
     fontSize: theme.fontXs,
+    fontFamily: theme.fontMono,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  gpuBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    padding: '4px 12px',
+    borderBottom: theme.border,
+    background: theme.bg2,
+    flexShrink: 0,
+  },
+  gpuChip: {
+    fontSize: 7,
+    color: theme.green,
+    flexShrink: 0,
+  },
+  gpuText: {
+    color: theme.textMuted,
+    fontSize: '11px',
     fontFamily: theme.fontMono,
     overflow: 'hidden',
     textOverflow: 'ellipsis',

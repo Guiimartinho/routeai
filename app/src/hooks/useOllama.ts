@@ -10,7 +10,7 @@ const DEFAULT_MODEL = 'qwen2.5-coder:14b';
 // All Ollama calls go through Go backend proxy at /api/ollama/*
 const OLLAMA_PROXY_BASE = '/api/ollama';
 
-// Model preference order: best to worst for PCB design tasks
+// Model preference order: best to worst for PCB design tasks (fallback when GPU profile unavailable)
 const MODEL_PREFERENCE = [
   'qwen2.5-coder:14b',
   'qwen2.5-coder:7b',
@@ -20,11 +20,53 @@ const MODEL_PREFERENCE = [
   'llama3.2',
 ];
 
+// ─── GPU Profile Types ─────────────────────────────────────────────────────
+
+export interface GPUProfile {
+  gpu: { name: string; vram_total_mb: number; vram_free_mb: number };
+  profile: { vram_gb: number; resident_model: string; swap_model: string | null; max_context: number; max_parallel: number };
+  tiers: { t3_fast: string; t2_structured: string; t1_strategy: string };
+}
+
+export type TaskType = 'fast' | 'structured' | 'heavy';
+
+// ─── GPU Profile Cache (singleton, once per session) ────────────────────────
+
+let _gpuProfileCache: GPUProfile | null = null;
+let _gpuProfileFetching: Promise<GPUProfile | null> | null = null;
+
+export async function fetchGPUProfile(): Promise<GPUProfile | null> {
+  if (_gpuProfileCache) return _gpuProfileCache;
+  if (_gpuProfileFetching) return _gpuProfileFetching;
+
+  _gpuProfileFetching = (async () => {
+    try {
+      const res = await fetch(`${OLLAMA_PROXY_BASE}/config`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: GPUProfile = await res.json();
+      _gpuProfileCache = data;
+      return data;
+    } catch {
+      return null;
+    } finally {
+      _gpuProfileFetching = null;
+    }
+  })();
+
+  return _gpuProfileFetching;
+}
+
 /**
- * Query Ollama for available models and pick the best one based on preference.
- * Falls back to the first available model if none from the preference list is found.
+ * Pick the best model for a given task type using GPU profile tiers.
+ * Falls back to MODEL_PREFERENCE list if GPU profile is unavailable.
+ *
+ * @param taskType - 'fast' uses T3 (resident), 'structured' uses T2, 'heavy' uses T2 (decomposed on backend)
  */
-export async function getBestAvailableModel(): Promise<{ model: string; available: string[]; fallback: boolean }> {
+export async function getBestAvailableModel(
+  taskType: TaskType = 'fast',
+): Promise<{ model: string; available: string[]; fallback: boolean; tier: string }> {
   try {
     const res = await fetch(`${OLLAMA_PROXY_BASE}/models`, {
       signal: AbortSignal.timeout(5000),
@@ -34,23 +76,44 @@ export async function getBestAvailableModel(): Promise<{ model: string; availabl
     const models: string[] = (data.models || []).map((m: any) => m.name || m.model);
 
     if (models.length === 0) {
-      return { model: DEFAULT_MODEL, available: [], fallback: true };
+      return { model: DEFAULT_MODEL, available: [], fallback: true, tier: 'unknown' };
     }
 
-    // Try each preferred model in order
+    // Try GPU profile tiers first
+    const profile = await fetchGPUProfile();
+    if (profile) {
+      const tierModel =
+        taskType === 'fast' ? profile.tiers.t3_fast :
+        taskType === 'structured' ? profile.tiers.t2_structured :
+        profile.tiers.t2_structured; // heavy also uses t2 (decomposed on backend)
+
+      const tierLabel =
+        taskType === 'fast' ? 'T3' :
+        taskType === 'structured' ? 'T2' : 'T2';
+
+      // Check if the tier model is available
+      const match = models.find(
+        (m) => m === tierModel || m.startsWith(tierModel + ':') || m === tierModel.split(':')[0],
+      );
+      if (match) {
+        return { model: match, available: models, fallback: false, tier: tierLabel };
+      }
+    }
+
+    // Fallback: try each preferred model in order
     for (const preferred of MODEL_PREFERENCE) {
       const match = models.find(
         (m) => m === preferred || m.startsWith(preferred + ':') || m === preferred.split(':')[0],
       );
       if (match) {
-        return { model: match, available: models, fallback: false };
+        return { model: match, available: models, fallback: false, tier: 'fallback' };
       }
     }
 
     // No preferred model found -- use the first available
-    return { model: models[0], available: models, fallback: true };
+    return { model: models[0], available: models, fallback: true, tier: 'fallback' };
   } catch {
-    return { model: DEFAULT_MODEL, available: [], fallback: true };
+    return { model: DEFAULT_MODEL, available: [], fallback: true, tier: 'unknown' };
   }
 }
 
@@ -355,7 +418,22 @@ export function useOllama(initialConfig?: Partial<OllamaConfig>) {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamContent, setStreamContent] = useState('');
+  const [gpuProfile, setGpuProfile] = useState<GPUProfile | null>(null);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [activeModelLabel, setActiveModelLabel] = useState<string | null>(null);
+  const gpuProfileLoaded = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // ── Load GPU profile (lazy — call when panel opens) ────────────
+
+  const loadGPUProfile = useCallback(async () => {
+    if (gpuProfileLoaded.current) return;
+    gpuProfileLoaded.current = true;
+    const profile = await fetchGPUProfile();
+    if (profile) {
+      setGpuProfile(profile);
+    }
+  }, []);
 
   // ── Check connection ────────────────────────────────────────────
 
@@ -402,7 +480,7 @@ export function useOllama(initialConfig?: Partial<OllamaConfig>) {
 
   const generate = useCallback(async (
     messages: OllamaMessage[],
-    options?: { json?: boolean }
+    options?: { json?: boolean; taskType?: TaskType }
   ): Promise<string> => {
     setIsGenerating(true);
     setStreamContent('');
@@ -412,9 +490,25 @@ export function useOllama(initialConfig?: Partial<OllamaConfig>) {
 
     if (ollamaOk) {
       try {
+        // Resolve model for the requested task type
+        const taskType = options?.taskType || 'fast';
+        const best = await getBestAvailableModel(taskType);
+        const targetModel = best.model;
+
+        // Detect model swap (switching from resident T3 to T2)
+        const needsSwap = gpuProfile
+          && targetModel !== gpuProfile.tiers.t3_fast
+          && (taskType === 'structured' || taskType === 'heavy');
+        if (needsSwap) {
+          setIsSwapping(true);
+          setActiveModelLabel(`Switching to ${targetModel}...`);
+        } else {
+          setActiveModelLabel(`Analyzing with ${targetModel}...`);
+        }
+
         abortRef.current = new AbortController();
         const body: any = {
-          model: config.model,
+          model: targetModel,
           messages: [
             { role: 'system', content: PCB_SYSTEM_PROMPT },
             ...messages,
@@ -441,8 +535,12 @@ export function useOllama(initialConfig?: Partial<OllamaConfig>) {
         const data = await res.json();
         const content = data.message?.content || '';
         setIsGenerating(false);
+        setIsSwapping(false);
+        setActiveModelLabel(null);
         return content;
       } catch (err: any) {
+        setIsSwapping(false);
+        setActiveModelLabel(null);
         if (err.name === 'AbortError') {
           setIsGenerating(false);
           throw new Error('Generation cancelled');
@@ -455,7 +553,7 @@ export function useOllama(initialConfig?: Partial<OllamaConfig>) {
     // Ollama not connected
     setIsGenerating(false);
     throw new Error('Ollama is not connected. Start Ollama and try again.');
-  }, [config, status.connected, checkConnection]);
+  }, [config, status.connected, checkConnection, gpuProfile]);
 
   // ── Stream prompt ───────────────────────────────────────────────
 
@@ -602,6 +700,10 @@ export function useOllama(initialConfig?: Partial<OllamaConfig>) {
     status,
     checkConnection,
     isGenerating,
+    isSwapping,
+    activeModelLabel,
+    gpuProfile,
+    loadGPUProfile,
     streamContent,
     generate,
     generateStream,
