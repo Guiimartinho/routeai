@@ -9,8 +9,8 @@ from __future__ import annotations
 from itertools import combinations
 from typing import TYPE_CHECKING
 
-from shapely.geometry import MultiPolygon, Polygon as ShapelyPolygon
-from shapely.prepared import prep
+from shapely.geometry import MultiPolygon
+from shapely.geometry import Polygon as ShapelyPolygon
 
 from routeai_solver.board_model import (
     BoardDesign,

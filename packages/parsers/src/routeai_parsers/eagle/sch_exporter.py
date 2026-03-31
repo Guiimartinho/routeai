@@ -7,26 +7,19 @@ symbols, parts, sheets with instances, nets, buses, and hierarchical sheets.
 
 from __future__ import annotations
 
-import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.dom import minidom
 
 from routeai_parsers.models import (
     HierarchicalSheet,
-    LabelType,
     LibSymbol,
-    LibSymbolPin,
-    Point2D,
     SchBus,
+    SchematicDesign,
     SchJunction,
     SchLabel,
-    SchNet,
-    SchPin,
-    SchProperty,
     SchSymbol,
     SchWire,
-    SchematicDesign,
 )
 
 # ---------------------------------------------------------------------------

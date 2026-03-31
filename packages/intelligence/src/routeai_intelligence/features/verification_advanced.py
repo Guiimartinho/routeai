@@ -12,7 +12,6 @@ import json
 import logging
 import math
 import re
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
@@ -1037,7 +1036,7 @@ def _dfm_heuristic_review(
             description=f"{small_via_count} via(s) with drill <{min_standard}mm",
             cost_impact=f"{fab_profile} charges ${surcharge:.0f} extra per board for <{min_standard}mm drill",
             cost_delta_usd=surcharge,
-            yield_impact=f"Yield drops ~0.5% due to tighter drill registration",
+            yield_impact="Yield drops ~0.5% due to tighter drill registration",
             yield_delta_pct=-0.5,
             suggestion=f"Use {min_standard}mm drill where possible to save ${surcharge:.0f}/board",
             manufacturing_explanation="Smaller drill bits have higher breakage rates and require slower feed, increasing cost.",
@@ -1748,7 +1747,7 @@ def _reference_heuristic_comparison(
                 if has_esd:
                     similarities.append(DesignSimilarity(
                         aspect=f"ESD protection ({ref_name})",
-                        description=f"Design includes ESD protection as recommended",
+                        description="Design includes ESD protection as recommended",
                     ))
                 else:
                     differences.append(DesignDifference(

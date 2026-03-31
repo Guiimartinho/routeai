@@ -8,12 +8,11 @@ All angles are stored internally in degrees.
 from __future__ import annotations
 
 import math
-from typing import Annotated, Any
+from typing import Any
 
 from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema, core_schema
-
 
 # Conversion factors TO millimeters
 _TO_MM = {

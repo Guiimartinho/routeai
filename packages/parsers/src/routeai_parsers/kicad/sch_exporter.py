@@ -18,16 +18,14 @@ from routeai_parsers.models import (
     LabelType,
     LibSymbol,
     LibSymbolPin,
-    Point2D,
     SchBus,
+    SchematicDesign,
     SchJunction,
     SchLabel,
     SchNoConnect,
-    SchPin,
     SchProperty,
     SchSymbol,
     SchWire,
-    SchematicDesign,
 )
 
 

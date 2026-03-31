@@ -11,11 +11,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from routeai_parsers.kicad.sexpr import parse as parse_sexpr, find_node, find_nodes, node_value
+from routeai_parsers.kicad.sexpr import find_node, find_nodes, node_value
+from routeai_parsers.kicad.sexpr import parse as parse_sexpr
 from routeai_parsers.models import (
     Arc,
     BoardDesign,
-    DesignRules,
     Footprint,
     FpArc,
     FpCircle,

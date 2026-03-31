@@ -11,7 +11,7 @@ import json
 import logging
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field

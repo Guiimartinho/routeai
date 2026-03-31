@@ -10,19 +10,17 @@ Supports Eagle 6.x through 9.x file formats.
 from __future__ import annotations
 
 import logging
-import math
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
 from routeai_parsers.models import (
-    HierarchicalSheet,
     LabelType,
     LibSymbol,
     LibSymbolPin,
     Point2D,
     SchBus,
+    SchematicDesign,
     SchJunction,
     SchLabel,
     SchNet,
@@ -30,7 +28,6 @@ from routeai_parsers.models import (
     SchProperty,
     SchSymbol,
     SchWire,
-    SchematicDesign,
 )
 
 logger = logging.getLogger(__name__)

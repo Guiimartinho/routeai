@@ -256,7 +256,7 @@ def get_pcbparts_client(cache_dir: str | Path | None = None) -> PCBPartsClient:
         Directory for caching downloaded KiCad symbols/footprints.
         Only used when creating the client for the first time.
     """
-    global _client  # noqa: PLW0603
+    global _client
     if _client is None:
         _client = PCBPartsClient(cache_dir=cache_dir)
     return _client

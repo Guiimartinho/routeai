@@ -17,19 +17,16 @@ from routeai_solver.board_model import (
     BoardDesign,
     Layer,
     LayerType,
-    Net,
     StackupLayer,
     Trace,
     TraceSegment,
 )
 from routeai_solver.physics.crosstalk import (
-    CrosstalkResult,
     StackupInfo,
     TraceGeometry,
     calculate_fext,
     calculate_next,
 )
-
 
 # ---------------------------------------------------------------------------
 # Result data classes

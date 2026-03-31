@@ -12,10 +12,10 @@ from routeai_intelligence.llm.gpu_detect import (
     get_vram_gb,
 )
 from routeai_intelligence.llm.model_manager import (
+    TASK_TIER_MAP,
     GPUProfile,
     ModelManager,
     ModelTier,
-    TASK_TIER_MAP,
 )
 from routeai_intelligence.llm.provider import (
     LLMProvider,
@@ -26,6 +26,7 @@ from routeai_intelligence.llm.provider import (
 from routeai_intelligence.llm.router import LLMRouter
 
 __all__ = [
+    "TASK_TIER_MAP",
     "GPUInfo",
     "GPUProfile",
     "LLMProvider",
@@ -33,7 +34,6 @@ __all__ = [
     "LLMRouter",
     "ModelManager",
     "ModelTier",
-    "TASK_TIER_MAP",
     "TokenUsage",
     "ToolCall",
     "get_gpu_info",

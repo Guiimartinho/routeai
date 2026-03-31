@@ -11,9 +11,8 @@ from typing import Optional
 
 from shapely.geometry import Point as ShapelyPoint
 
-from routeai_solver.board_model import BoardDesign, Pad, Via
+from routeai_solver.board_model import BoardDesign, Pad
 from routeai_solver.drc.engine import DRCSeverity, DRCViolation
-
 
 # ---------------------------------------------------------------------------
 # Fabrication profiles

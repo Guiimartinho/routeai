@@ -19,15 +19,12 @@ from routeai_solver.board_model import (
     StackupLayer,
     Trace,
     TraceSegment,
-    Via,
 )
 from routeai_solver.physics.impedance import (
-    ImpedanceResult,
-    microstrip_impedance,
     embedded_microstrip_impedance,
+    microstrip_impedance,
     stripline_impedance,
 )
-
 
 # ---------------------------------------------------------------------------
 # Data classes for impedance analysis results

@@ -75,7 +75,7 @@ _ollama_provider: Any = None
 
 def _get_ollama_provider() -> Any:
     """Lazy-load the OllamaProvider so import time stays fast."""
-    global _ollama_provider  # noqa: PLW0603
+    global _ollama_provider
     if _ollama_provider is None:
         try:
             from routeai_intelligence.llm.ollama_provider import OllamaProvider
@@ -91,7 +91,7 @@ def _get_ollama_provider() -> Any:
 
 def _get_rag() -> Any:
     """Lazy-load the DatasheetRAG pipeline."""
-    global _rag_instance  # noqa: PLW0603
+    global _rag_instance
     if _rag_instance is None:
         try:
             from routeai_intelligence.rag.datasheet_rag import DatasheetRAG
@@ -1356,6 +1356,8 @@ def _build_board_design(board_data: dict[str, Any]) -> Any:
     Does a best-effort mapping from the generic JSON representation to
     the strongly-typed dataclass model used by the DRC engine.
     """
+    from shapely.geometry import Polygon as ShapelyPolygon
+
     from routeai_solver.board_model import (
         BoardDesign,
         CopperZone,
@@ -1369,7 +1371,6 @@ def _build_board_design(board_data: dict[str, Any]) -> Any:
         TraceSegment,
         Via,
     )
-    from shapely.geometry import Polygon as ShapelyPolygon
 
     # --- Layers ---
     layer_cache: dict[str, Layer] = {}

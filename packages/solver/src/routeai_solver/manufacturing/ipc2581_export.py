@@ -11,26 +11,19 @@ Products Manufacturing Description Data and Transfer Methodology).
 
 from __future__ import annotations
 
-import math
-import time
 import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.dom import minidom
-from typing import Optional
 
 from routeai_solver.board_model import (
     BoardDesign,
-    CopperZone,
-    Layer,
     LayerType,
     Pad,
     PadShape,
     Trace,
-    TraceSegment,
     Via,
 )
-
 
 # IPC-2581C namespace
 IPC_NS = "http://webstds.ipc.org/2581"

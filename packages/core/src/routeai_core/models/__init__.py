@@ -4,6 +4,13 @@ Exports all model classes for schematic, physical, constraint, stackup,
 and manufacturing representations.
 """
 
+from routeai_core.models.constraints import (
+    DesignRules,
+    DiffPair,
+    KeepOut,
+    LengthGroup,
+    NetClass,
+)
 from routeai_core.models.intent import (
     ClusteringIntent,
     CostWeights,
@@ -25,16 +32,9 @@ from routeai_core.models.intent import (
     ViaStrategyIntent,
     VoltageDropTarget,
 )
-from routeai_core.models.constraints import (
-    DesignRules,
-    DiffPair,
-    KeepOut,
-    LengthGroup,
-    NetClass,
-)
 from routeai_core.models.manufacturing import (
-    AssemblyData,
     BOM,
+    AssemblyData,
     BOMEntry,
     FabricationSpec,
     PickAndPlace,

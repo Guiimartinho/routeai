@@ -13,7 +13,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from routeai_parsers.kicad.sexpr import parse as parse_sexpr, find_node, find_nodes, node_value
+from routeai_parsers.kicad.sexpr import find_node, find_nodes, node_value
+from routeai_parsers.kicad.sexpr import parse as parse_sexpr
 from routeai_parsers.models import (
     HierarchicalSheet,
     LabelType,
@@ -21,6 +22,7 @@ from routeai_parsers.models import (
     LibSymbolPin,
     Point2D,
     SchBus,
+    SchematicDesign,
     SchJunction,
     SchLabel,
     SchNet,
@@ -29,7 +31,6 @@ from routeai_parsers.models import (
     SchProperty,
     SchSymbol,
     SchWire,
-    SchematicDesign,
 )
 
 logger = logging.getLogger(__name__)
@@ -609,11 +610,7 @@ class KiCadSchParser:
                     if lbl.label_type == LabelType.POWER:
                         is_power = True
                     # Priority: power > global > hierarchical > local
-                    if not net_name:
-                        net_name = lbl.text
-                    elif lbl.label_type == LabelType.POWER:
-                        net_name = lbl.text
-                    elif lbl.label_type == LabelType.GLOBAL and not is_power:
+                    if not net_name or lbl.label_type == LabelType.POWER or (lbl.label_type == LabelType.GLOBAL and not is_power):
                         net_name = lbl.text
 
             # Only create a net if there are pins or labels

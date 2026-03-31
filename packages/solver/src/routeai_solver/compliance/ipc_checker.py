@@ -16,20 +16,13 @@ References:
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
 from routeai_solver.board_model import (
     BoardDesign,
-    Layer,
-    LayerType,
-    Pad,
-    PadShape,
-    Via,
 )
-
 
 # ---------------------------------------------------------------------------
 # Data classes

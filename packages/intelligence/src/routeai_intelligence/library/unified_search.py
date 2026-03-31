@@ -13,6 +13,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from routeai_intelligence.library.eagle_lib_provider import EagleLibProvider
+from routeai_intelligence.library.easyeda_provider import EasyEDAProvider
+from routeai_intelligence.library.kicad_lib_provider import KiCadLibProvider
+from routeai_intelligence.library.lcsc_provider import LCSCProvider
 from routeai_intelligence.library.models import (
     ComponentDetail,
     ComponentResult,
@@ -20,10 +24,6 @@ from routeai_intelligence.library.models import (
     PinInfo,
 )
 from routeai_intelligence.library.snapeda_provider import SnapEDAProvider
-from routeai_intelligence.library.lcsc_provider import LCSCProvider
-from routeai_intelligence.library.kicad_lib_provider import KiCadLibProvider
-from routeai_intelligence.library.eagle_lib_provider import EagleLibProvider
-from routeai_intelligence.library.easyeda_provider import EasyEDAProvider
 
 logger = logging.getLogger(__name__)
 

@@ -6,19 +6,19 @@ generation.
 """
 
 from routeai_solver.compliance.ipc_checker import (
-    IPCComplianceChecker,
-    ComplianceReport,
-    ComplianceCheck,
     CheckResult,
+    ComplianceCheck,
+    ComplianceReport,
+    IPCComplianceChecker,
 )
 from routeai_solver.compliance.report_generator import (
     ComplianceReportGenerator,
 )
 
 __all__ = [
-    "IPCComplianceChecker",
-    "ComplianceReport",
-    "ComplianceCheck",
     "CheckResult",
+    "ComplianceCheck",
+    "ComplianceReport",
     "ComplianceReportGenerator",
+    "IPCComplianceChecker",
 ]

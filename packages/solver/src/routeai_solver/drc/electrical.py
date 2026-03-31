@@ -8,18 +8,14 @@ from __future__ import annotations
 
 from typing import Optional
 
-from shapely.geometry import MultiPolygon
-
 from routeai_solver.board_model import (
     BoardDesign,
-    Layer,
     Net,
     Pad,
     Trace,
     Via,
 )
 from routeai_solver.drc.engine import DRCSeverity, DRCViolation
-
 
 # ---------------------------------------------------------------------------
 # Union-Find data structure

@@ -23,7 +23,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,7 +46,7 @@ def _extract_pdf_text(pdf_path: str | Path) -> list[dict[str, Any]]:
 
     Tries PyMuPDF (fitz) first, then pdfplumber, then raises ImportError.
     """
-    global _PDF_BACKEND  # noqa: PLW0603
+    global _PDF_BACKEND
 
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
@@ -449,8 +448,8 @@ def _call_ollama(
         import httpx
     except ImportError:
         try:
-            import urllib.request
             import urllib.error
+            import urllib.request
 
             data = json.dumps({
                 "model": model,
@@ -838,7 +837,7 @@ class DatasheetRAG:
         """Close the vector store connection."""
         self._store.close()
 
-    def __enter__(self) -> "DatasheetRAG":
+    def __enter__(self) -> DatasheetRAG:
         return self
 
     def __exit__(self, *args: Any) -> None:

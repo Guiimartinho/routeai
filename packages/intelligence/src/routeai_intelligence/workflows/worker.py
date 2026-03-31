@@ -16,7 +16,6 @@ import argparse
 import asyncio
 import logging
 import signal
-import sys
 
 from temporalio.client import Client
 from temporalio.worker import Worker

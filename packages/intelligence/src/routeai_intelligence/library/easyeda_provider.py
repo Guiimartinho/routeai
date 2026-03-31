@@ -252,21 +252,21 @@ class EasyEDAProvider:
 
         safe_name = re.sub(r"[^\w\-.]", "_", comp.mpn or comp.title)
         lines: list[str] = [
-            f'(kicad_symbol_lib (version 20220914) (generator routeai_easyeda_convert)',
+            '(kicad_symbol_lib (version 20220914) (generator routeai_easyeda_convert)',
             f'  (symbol "{safe_name}" (in_bom yes) (on_board yes)',
-            f'    (property "Reference" "U" (at 0 1.27 0)',
-            f'      (effects (font (size 1.27 1.27))))',
+            '    (property "Reference" "U" (at 0 1.27 0)',
+            '      (effects (font (size 1.27 1.27))))',
             f'    (property "Value" "{safe_name}" (at 0 -1.27 0)',
-            f'      (effects (font (size 1.27 1.27))))',
+            '      (effects (font (size 1.27 1.27))))',
             f'    (property "Footprint" "{comp.package}" (at 0 -3.81 0)',
-            f'      (effects (font (size 1.27 1.27)) hide))',
+            '      (effects (font (size 1.27 1.27)) hide))',
         ]
 
         if comp.datasheet_url:
             lines.append(
                 f'    (property "Datasheet" "{comp.datasheet_url}" (at 0 -6.35 0)'
             )
-            lines.append(f'      (effects (font (size 1.27 1.27)) hide))')
+            lines.append('      (effects (font (size 1.27 1.27)) hide))')
 
         lines.append(f'    (symbol "{safe_name}_0_1"')
 
@@ -297,14 +297,14 @@ class EasyEDAProvider:
         safe_name = re.sub(r"[^\w\-.]", "_", comp.mpn or comp.title)
         lines: list[str] = [
             f'(footprint "{safe_name}" (version 20221018) (generator routeai_easyeda_convert)',
-            f'  (layer "F.Cu")',
-            f'  (attr smd)',
-            f'  (fp_text reference "REF**" (at 0 -2 0)',
-            f'    (layer "F.SilkS")',
-            f'    (effects (font (size 1 1) (thickness 0.15))))',
+            '  (layer "F.Cu")',
+            '  (attr smd)',
+            '  (fp_text reference "REF**" (at 0 -2 0)',
+            '    (layer "F.SilkS")',
+            '    (effects (font (size 1 1) (thickness 0.15))))',
             f'  (fp_text value "{safe_name}" (at 0 2 0)',
-            f'    (layer "F.Fab")',
-            f'    (effects (font (size 1 1) (thickness 0.15))))',
+            '    (layer "F.Fab")',
+            '    (effects (font (size 1 1) (thickness 0.15))))',
         ]
 
         # Parse pads from footprint JSON shapes

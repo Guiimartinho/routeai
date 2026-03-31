@@ -14,7 +14,11 @@ from typing import Optional
 from shapely.geometry import (
     LineString,
     MultiPolygon,
+)
+from shapely.geometry import (
     Point as ShapelyPoint,
+)
+from shapely.geometry import (
     Polygon as ShapelyPolygon,
 )
 from shapely.ops import unary_union

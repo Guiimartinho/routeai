@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
 from typing import Any
 
 import anthropic
@@ -26,7 +25,6 @@ from routeai_intelligence.placement.analyzer import (
     CircuitZoneAnalyzer,
     ComponentZone,
     CriticalPair,
-    ThermalGroup,
 )
 from routeai_intelligence.placement.prompts import (
     PLACEMENT_EXPLAIN_PROMPT,

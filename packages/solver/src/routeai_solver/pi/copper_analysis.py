@@ -19,14 +19,9 @@ from shapely.ops import unary_union
 
 from routeai_solver.board_model import (
     BoardDesign,
-    CopperZone,
     Layer,
-    LayerType,
-    Pad,
     StackupLayer,
-    Trace,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -215,7 +210,7 @@ class CopperAnalyzer:
             assessment = "good"
         elif fill_pct >= self.min_fill_pct:
             assessment = "acceptable"
-            notes.append(f"Fill is below 60%, consider adding copper pours")
+            notes.append("Fill is below 60%, consider adding copper pours")
         else:
             assessment = "poor"
             notes.append(

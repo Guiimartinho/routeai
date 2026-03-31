@@ -62,7 +62,7 @@ def detect_gpu() -> GPUInfo:
 
 def get_gpu_info() -> GPUInfo:
     """Return cached GPU info, detecting on first call."""
-    global _cached  # noqa: PLW0603
+    global _cached
     if _cached is None:
         _cached = detect_gpu()
     return _cached

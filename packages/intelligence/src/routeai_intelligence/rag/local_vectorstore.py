@@ -302,7 +302,7 @@ class LocalVectorStore:
         )
         return [row[0] for row in cursor if row[0]]
 
-    def __enter__(self) -> "LocalVectorStore":
+    def __enter__(self) -> LocalVectorStore:
         self.connect()
         return self
 

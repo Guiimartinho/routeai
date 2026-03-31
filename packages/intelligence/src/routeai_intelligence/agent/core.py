@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from routeai_intelligence.agent.react_state import ReActState
+from routeai_intelligence.agent.decomposer import TaskDecomposer
 from routeai_intelligence.agent.prompts.constraint_gen import (
     SYSTEM_PROMPT as CONSTRAINT_GEN_PROMPT,
 )
@@ -27,13 +27,12 @@ from routeai_intelligence.agent.prompts.design_review import (
 from routeai_intelligence.agent.prompts.routing_strategy import (
     SYSTEM_PROMPT as ROUTING_STRATEGY_PROMPT,
 )
-from routeai_intelligence.agent.decomposer import TaskDecomposer
+from routeai_intelligence.agent.react_state import ReActState
 from routeai_intelligence.agent.tools import (
-    ALL_TOOLS,
     get_tool_handler,
     get_tool_schemas,
 )
-from routeai_intelligence.llm.provider import LLMProvider, LLMResponse, ToolCall
+from routeai_intelligence.llm.provider import LLMProvider, LLMResponse
 from routeai_intelligence.llm.router import LLMRouter
 from routeai_intelligence.validation.citation_checker import CitationChecker
 from routeai_intelligence.validation.confidence import ConfidenceChecker
@@ -816,7 +815,7 @@ class RouteAIAgent:
             # Create a temporary router and inject our provider
             router = LLMRouter()
             router.add_provider(self._llm_provider, primary=True)
-            router._initialized = True  # noqa: SLF001
+            router._initialized = True
 
         if router is None:
             raise RuntimeError("No LLM provider or router configured.")
@@ -911,7 +910,7 @@ class RouteAIAgent:
         if router is None and self._llm_provider is not None:
             router = LLMRouter()
             router.add_provider(self._llm_provider, primary=True)
-            router._initialized = True  # noqa: SLF001
+            router._initialized = True
 
         return await director.generate_routing_intent(
             board_state=board,

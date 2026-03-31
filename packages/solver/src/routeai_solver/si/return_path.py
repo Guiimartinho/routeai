@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional
 
-from shapely.geometry import LineString, Point as ShapelyPoint
+from shapely.geometry import LineString
 from shapely.ops import unary_union
 
 from routeai_solver.board_model import (
@@ -22,10 +22,7 @@ from routeai_solver.board_model import (
     Net,
     StackupLayer,
     Trace,
-    TraceSegment,
-    Via,
 )
-
 
 # ---------------------------------------------------------------------------
 # Result data classes
@@ -441,7 +438,7 @@ class ReturnPathAnalyzer:
 
             # Multiple power nets on the same layer indicates a split plane
             power_nets = [
-                name for name in zones_by_net.keys()
+                name for name in zones_by_net
                 if any(kw in name.lower() for kw in ("gnd", "vcc", "vdd", "+"))
             ]
 

@@ -22,18 +22,12 @@ from __future__ import annotations
 
 from routeai_core.models.intent import (
     CostWeights,
-    DiffPairIntent,
-    ImpedanceTarget,
-    LengthMatchingIntent,
     NetClassIntent,
     PlacementIntent,
     PlacementZone,
     RoutingIntent,
-    RoutingOrderEntry,
-    ViaStrategyIntent,
     VoltageDropTarget,
 )
-
 
 # ---------------------------------------------------------------------------
 # Proto enum values (matching routing.proto, avoids depending on generated code)
@@ -404,7 +398,7 @@ def _build_proto_nets(intent: RoutingIntent) -> list[dict]:
 def _diff_pair_to_dict(nc: NetClassIntent) -> dict:
     """Build a diff-pair dict compatible with ``routeai_solver.board_model.DiffPair``."""
     dp = nc.differential_pair
-    assert dp is not None  # caller checks  # noqa: S101
+    assert dp is not None  # caller checks
     impedance = nc.impedance.target_ohm if nc.impedance is not None else 100.0
     gap = (
         nc.impedance.coupling_gap_mm
@@ -427,7 +421,7 @@ def _diff_pair_to_dict(nc: NetClassIntent) -> dict:
 def _merge_length_group(groups: list[dict], nc: NetClassIntent) -> None:
     """Merge net class nets into an existing length group, or create one."""
     lm = nc.length_matching
-    assert lm is not None  # caller checks  # noqa: S101
+    assert lm is not None  # caller checks
 
     for group in groups:
         if group["name"] == lm.group:

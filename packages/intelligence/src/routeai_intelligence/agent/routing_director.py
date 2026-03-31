@@ -17,7 +17,6 @@ import anthropic
 from pydantic import BaseModel, Field
 
 from routeai_core.models.intent import RoutingIntent
-
 from routeai_intelligence.agent.prompts.routing_director import (
     ROUTING_DIRECTOR_SYSTEM_PROMPT,
     STRATEGY_ADJUSTMENT_PROMPT,

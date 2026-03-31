@@ -11,7 +11,7 @@ synthesis step sees ALL prior findings.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from routeai_intelligence.llm.router import LLMRouter

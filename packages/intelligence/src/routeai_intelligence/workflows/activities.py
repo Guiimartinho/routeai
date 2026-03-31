@@ -192,8 +192,9 @@ async def run_llm_review(input: LLMReviewInput) -> LLMReviewOutput:
     """Run LLM-powered design review."""
     logger.info("Running LLM review on project %s, scope: %s", input.project_id, input.review_scope)
 
-    from routeai_intelligence.agent.core import RouteAIAgent  # type: ignore[import-untyped]
-    from routeai_intelligence.agent.schematic_reviewer import SchematicReviewer  # type: ignore[import-untyped]
+    from routeai_intelligence.agent.schematic_reviewer import (
+        SchematicReviewer,  # type: ignore[import-untyped]
+    )
 
     activity.heartbeat("Initializing LLM reviewer")
     reviewer = SchematicReviewer()
@@ -323,7 +324,9 @@ async def generate_strategy(input: GenerateStrategyInput) -> GenerateStrategyOut
     """Generate or adjust a routing strategy using the LLM routing director."""
     logger.info("Generating routing strategy for project %s", input.project_id)
 
-    from routeai_intelligence.agent.routing_director import RoutingDirector  # type: ignore[import-untyped]
+    from routeai_intelligence.agent.routing_director import (
+        RoutingDirector,  # type: ignore[import-untyped]
+    )
 
     activity.heartbeat("Generating routing strategy")
     director = RoutingDirector()

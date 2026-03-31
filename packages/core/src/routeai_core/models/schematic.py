@@ -12,7 +12,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from routeai_core.geometry import Point
-from routeai_core.units import Angle, Length
+from routeai_core.units import Angle
 
 
 class ElectricalType(str, Enum):

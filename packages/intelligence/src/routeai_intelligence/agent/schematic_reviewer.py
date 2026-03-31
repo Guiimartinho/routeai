@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import re
 from enum import Enum
 from typing import Any
@@ -523,9 +522,9 @@ class SchematicReviewer:
                     location=ref,
                     affected_components=[ref] + [c.get("reference", "") for c in load_caps],
                     fix_suggestion=(
-                        f"Add load capacitors to both crystal pins. Typical values: "
-                        f"CL = 2 * (Cload - Cstray), where Cload is the crystal's specified load "
-                        f"capacitance and Cstray is ~3-5pF. For a 20pF load crystal, use 33pF caps."
+                        "Add load capacitors to both crystal pins. Typical values: "
+                        "CL = 2 * (Cload - Cstray), where Cload is the crystal's specified load "
+                        "capacitance and Cstray is ~3-5pF. For a 20pF load crystal, use 33pF caps."
                     ),
                     citation="Crystal manufacturer application note: CL = 2 * (Cload - Cstray); "
                              "ST AN2867 - Oscillator design guide for STM32",

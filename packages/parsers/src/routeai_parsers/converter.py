@@ -6,48 +6,91 @@ Provides bidirectional conversion between the parser's flat data model
 
 from __future__ import annotations
 
-import math
 from typing import Optional
-
-from routeai_parsers import models as pm
 
 from routeai_core.geometry import Line, Point, Polygon
 from routeai_core.models.constraints import DesignRules as CoreDesignRules
 from routeai_core.models.constraints import NetClass as CoreNetClass
 from routeai_core.models.physical import (
     BoardDesign as CoreBoardDesign,
+)
+from routeai_core.models.physical import (
     BoardOutline as CoreBoardOutline,
+)
+from routeai_core.models.physical import (
     Footprint as CoreFootprint,
+)
+from routeai_core.models.physical import (
     Model3D as CoreModel3D,
+)
+from routeai_core.models.physical import (
     Pad as CorePad,
+)
+from routeai_core.models.physical import (
     PadShape as CorePadShape,
+)
+from routeai_core.models.physical import (
     PadType as CorePadType,
+)
+from routeai_core.models.physical import (
     ThermalRelief as CoreThermalRelief,
+)
+from routeai_core.models.physical import (
     TraceSegment as CoreTraceSegment,
+)
+from routeai_core.models.physical import (
     Via as CoreVia,
+)
+from routeai_core.models.physical import (
     ViaType as CoreViaType,
+)
+from routeai_core.models.physical import (
     Zone as CoreZone,
+)
+from routeai_core.models.physical import (
     ZoneFillType as CoreZoneFillType,
 )
 from routeai_core.models.schematic import (
     Bus as CoreBus,
+)
+from routeai_core.models.schematic import (
     Component as CoreComponent,
+)
+from routeai_core.models.schematic import (
     ElectricalType as CoreElectricalType,
+)
+from routeai_core.models.schematic import (
     Net as CoreNet,
+)
+from routeai_core.models.schematic import (
     Pin as CorePin,
+)
+from routeai_core.models.schematic import (
     SchematicDesign as CoreSchematicDesign,
+)
+from routeai_core.models.schematic import (
     Sheet as CoreSheet,
+)
+from routeai_core.models.schematic import (
     SheetInstance as CoreSheetInstance,
 )
 from routeai_core.models.stackup import (
     DielectricLayer as CoreDielectricLayer,
+)
+from routeai_core.models.stackup import (
     Layer as CoreLayer,
+)
+from routeai_core.models.stackup import (
     LayerType as CoreLayerType,
+)
+from routeai_core.models.stackup import (
     StackUp as CoreStackUp,
+)
+from routeai_core.models.stackup import (
     StackupLayer as CoreStackupLayer,
 )
 from routeai_core.units import Angle, Length
-
+from routeai_parsers import models as pm
 
 # ---------------------------------------------------------------------------
 # Helper: coordinate conversions

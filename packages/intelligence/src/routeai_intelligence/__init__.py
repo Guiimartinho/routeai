@@ -21,16 +21,16 @@ from routeai_intelligence.validation.schema_validator import SchemaValidator
 
 if TYPE_CHECKING:
     from routeai_intelligence.agent.core import RouteAIAgent
-    from routeai_intelligence.library.unified_search import UnifiedComponentSearch
     from routeai_intelligence.library.recommender import ComponentRecommender
+    from routeai_intelligence.library.unified_search import UnifiedComponentSearch
 
 __all__ = [
+    "CitationChecker",
+    "ComponentRecommender",
+    "ConfidenceChecker",
     "RouteAIAgent",
     "SchemaValidator",
-    "ConfidenceChecker",
-    "CitationChecker",
     "UnifiedComponentSearch",
-    "ComponentRecommender",
 ]
 
 __version__ = "0.1.0"

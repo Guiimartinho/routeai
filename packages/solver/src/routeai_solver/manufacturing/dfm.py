@@ -15,12 +15,7 @@ from typing import Optional
 
 from routeai_solver.board_model import (
     BoardDesign,
-    Layer,
-    LayerType,
-    Pad,
-    Via,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fabrication capability profiles

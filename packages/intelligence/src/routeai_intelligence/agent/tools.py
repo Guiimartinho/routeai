@@ -7,8 +7,7 @@ LLM during ReAct loop execution.
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Coroutine
 
 # IPC-2221B Table 6-1 clearance values (voltage -> clearance in mm)
@@ -303,7 +302,6 @@ async def _handle_stackup_suggest(
     """
     from routeai_solver.physics.impedance import (
         microstrip_impedance,
-        stripline_impedance,
     )
 
     if layer_count not in (2, 4, 6, 8):

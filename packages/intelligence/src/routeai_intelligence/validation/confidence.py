@@ -11,7 +11,7 @@ outputs at zero cost (deterministic, no LLM needed).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -260,7 +260,7 @@ class ConfidenceChecker:
                     threshold=0.5,
                     is_safety_critical=True,
                     reason=(
-                        f"Physics boundary violations: "
+                        "Physics boundary violations: "
                         + "; ".join(p_violations)
                     ),
                     action="reject",

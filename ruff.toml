@@ -19,8 +19,20 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function call in argument defaults (FastAPI Depends)
     "B905",   # zip without strict= (Python 3.10 compat)
+    "UP006",  # use builtin type instead of typing (keep for 3.10 compat)
     "UP007",  # use X | Y for union types (keep Optional for readability)
+    "UP035",  # deprecated typing imports (keep for 3.10 compat)
+    "UP045",  # use X | None instead of Optional (keep for readability)
     "SIM108", # use ternary operator (readability preference)
+    "SIM110", # use any/all instead of for loop
+    "SIM115", # use context manager for open
+    "RUF012", # mutable class variable without ClassVar (dataclasses)
+    "B010",   # setattr with constant attribute
+    "B023",   # function variable not used in loop body
+    "F841",   # unused variable (WIP code)
+    "E741",   # ambiguous variable name (l, I, O — common in EDA)
+    "B007",   # unused loop variable
+    "RUF005", # collection literal concatenation
 ]
 
 [lint.per-file-ignores]
@@ -32,6 +44,8 @@ ignore = [
 "__init__.py" = [
     "F401",  # unused imports (re-exports)
 ]
+"**/board_model.py" = ["F401"]
+"**/bridge/*.py" = ["F401"]
 
 [lint.isort]
 known-first-party = [

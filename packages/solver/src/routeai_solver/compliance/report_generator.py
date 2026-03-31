@@ -9,14 +9,11 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Optional
 
 from routeai_solver.compliance.ipc_checker import (
     CheckResult,
-    ComplianceCheck,
     ComplianceReport,
 )
-
 
 # ---------------------------------------------------------------------------
 # HTML Templates

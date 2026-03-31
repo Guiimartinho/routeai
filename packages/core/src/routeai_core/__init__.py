@@ -9,11 +9,11 @@ __version__ = "0.1.0"
 
 from routeai_core.geometry import Arc, BoundingBox, Line, Point, Polygon
 from routeai_core.models import (
-    AssemblyData,
     BOM,
-    BOMEntry,
+    AssemblyData,
     BoardDesign,
     BoardOutline,
+    BOMEntry,
     Bus,
     Component,
     CopperWeight,

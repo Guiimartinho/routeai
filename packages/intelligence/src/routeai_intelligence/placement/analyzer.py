@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 from routeai_parsers.models import SchematicDesign, SchSymbol
 
@@ -479,9 +478,7 @@ class CircuitZoneAnalyzer:
 
         # Check typical decoupling values
         is_small_cap = False
-        if any(v in value_lower for v in ("100n", "0.1u", "10n", "1u", "4.7u", "22n", "47n")):
-            is_small_cap = True
-        elif value_lower in ("100nf", "0.1uf", "10nf", "1uf"):
+        if any(v in value_lower for v in ("100n", "0.1u", "10n", "1u", "4.7u", "22n", "47n")) or value_lower in ("100nf", "0.1uf", "10nf", "1uf"):
             is_small_cap = True
 
         if not is_small_cap:

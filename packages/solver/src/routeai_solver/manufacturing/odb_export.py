@@ -18,25 +18,15 @@ Structure generated:
 from __future__ import annotations
 
 import io
-import os
-import math
 import tarfile
 import time
 from pathlib import Path
-from typing import Optional
 
 from routeai_solver.board_model import (
     BoardDesign,
-    CopperZone,
-    Layer,
     LayerType,
-    Pad,
     PadShape,
-    Trace,
-    TraceSegment,
-    Via,
 )
-
 
 # ---------------------------------------------------------------------------
 # ODB++ feature formatting helpers
@@ -215,7 +205,7 @@ class ODBExporter:
             side = _LAYER_SIDE_MAP.get(layer_name, "NONE")
             safe_name = layer_name.replace(".", "_").lower()
 
-            lines.append(f"STEP {{")
+            lines.append("STEP {")
             lines.append(f"   COL={safe_name}")
             lines.append(f"   ROW={row}")
             lines.append(f"   CONTEXT={context}")
@@ -223,7 +213,7 @@ class ODBExporter:
             lines.append(f"   POLARITY={polarity}")
             lines.append(f"   SIDE={side}")
             lines.append(f"   NAME={safe_name}")
-            lines.append(f"}}")
+            lines.append("}")
             lines.append("")
 
         return "\n".join(lines)
@@ -237,13 +227,13 @@ class ODBExporter:
         lines: list[str] = []
         lines.append("UNITS=MM")
         lines.append(f"JOB_NAME={self.job_name}")
-        lines.append(f"ODB_VERSION_MAJOR=8")
-        lines.append(f"ODB_VERSION_MINOR=1")
+        lines.append("ODB_VERSION_MAJOR=8")
+        lines.append("ODB_VERSION_MINOR=1")
         lines.append(f"CREATION_DATE={_odb_timestamp()}")
         lines.append(f"SAVE_DATE={_odb_timestamp()}")
-        lines.append(f"SAVE_APP=RouteAI EDA")
-        lines.append(f"SAVE_USER=routeai")
-        lines.append(f"MAX_UID=0")
+        lines.append("SAVE_APP=RouteAI EDA")
+        lines.append("SAVE_USER=routeai")
+        lines.append("MAX_UID=0")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -377,14 +367,14 @@ class ODBExporter:
                         if len(coords) < 3:
                             continue
                         feature_lines.append(f"S P 0 ;NET={zone.net.name}")
-                        feature_lines.append(f"OB")
+                        feature_lines.append("OB")
                         for idx_c, (cx, cy) in enumerate(coords):
                             if idx_c == 0:
                                 feature_lines.append(f"OS {_fmt_mm(cx)} {_fmt_mm(cy)}")
                             else:
                                 feature_lines.append(f"OC {_fmt_mm(cx)} {_fmt_mm(cy)}")
-                        feature_lines.append(f"OE")
-                        feature_lines.append(f"SE")
+                        feature_lines.append("OE")
+                        feature_lines.append("SE")
 
         elif layer_name.endswith(".Mask"):
             # Solder mask: openings around pads

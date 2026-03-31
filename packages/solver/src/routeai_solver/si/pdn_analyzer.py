@@ -18,13 +18,10 @@ from typing import Optional
 
 from routeai_solver.board_model import (
     BoardDesign,
-    CopperZone,
-    Layer,
     LayerType,
     Net,
     StackupLayer,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants

@@ -75,7 +75,7 @@ class _DualProviderLLM:
         if not self._secondary_base_url and not self._secondary_api_key:
             return None
         try:
-            import openai  # noqa: F811
+            import openai
 
             self._secondary_client = openai.AsyncOpenAI(
                 api_key=self._secondary_api_key or "unused",
