@@ -1,10 +1,8 @@
-"""LLM provider router with automatic detection and fallback.
+"""LLM provider router — local Ollama only.
 
-Priority order: Ollama (local, fast, free) -> Claude (best quality) -> Gemini (fallback).
-
-The router auto-detects available providers at startup and tries each in
-priority order. If the primary provider fails, requests automatically fall
-through to the next available provider.
+RouteAI runs 100% locally via Ollama. Cloud providers (Anthropic, Gemini)
+are NOT auto-detected. They remain importable for developers who want to
+add them manually via ``add_provider()``.
 """
 
 from __future__ import annotations
@@ -13,6 +11,8 @@ import logging
 import os
 from typing import Any
 
+from routeai_intelligence.llm.gpu_detect import get_vram_gb
+from routeai_intelligence.llm.model_manager import ModelManager
 from routeai_intelligence.llm.provider import (
     LLMProvider,
     LLMResponse,
@@ -22,26 +22,25 @@ logger = logging.getLogger(__name__)
 
 
 class LLMRouter:
-    """Routes LLM requests to the best available provider.
+    """Routes LLM requests to the best available local provider.
 
-    Priority: Ollama (local, fast, free) -> Claude (best quality) -> Gemini (fallback)
-
-    Auto-detects available providers at startup.
-    Falls back gracefully if the primary provider is unavailable or errors.
+    Only Ollama is auto-detected. Cloud providers (Anthropic, Gemini) can be
+    added manually via ``add_provider()`` for testing, but are never
+    auto-detected.
     """
 
     def __init__(self) -> None:
         self._providers: list[LLMProvider] = []
         self._primary: LLMProvider | None = None
         self._initialized: bool = False
+        self._model_manager: ModelManager | None = None
 
     async def initialize(self) -> None:
         """Detect available providers and set priority order.
 
-        Checks:
-        1. Ollama server reachability and model availability.
-        2. ``ANTHROPIC_API_KEY`` environment variable.
-        3. ``GEMINI_API_KEY`` or ``GOOGLE_API_KEY`` environment variable.
+        Only Ollama (local) is auto-detected. RouteAI is 100% local --
+        no cloud APIs are used by default. Developers can still add
+        cloud providers manually via ``add_provider()`` if needed.
         """
         from routeai_intelligence.llm.ollama_provider import OllamaProvider
 
@@ -57,26 +56,34 @@ class LLMRouter:
         if await ollama.is_available():
             self._providers.append(ollama)
             logger.info("LLM provider available: %s", ollama.name)
+            # Create VRAM-aware model manager for local Ollama inference
+            self._model_manager = ModelManager(get_vram_gb())
         else:
             logger.info("Ollama not available at %s", ollama_host)
 
-        # 2. Check Anthropic API key
-        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if anthropic_key:
-            from routeai_intelligence.llm.anthropic_provider import AnthropicProvider
-
-            provider = AnthropicProvider(api_key=anthropic_key)
-            self._providers.append(provider)
-            logger.info("LLM provider available: %s", provider.name)
-
-        # 3. Check Gemini API key
-        gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if gemini_key:
-            from routeai_intelligence.llm.gemini_provider import GeminiProvider
-
-            provider = GeminiProvider(api_key=gemini_key)
-            self._providers.append(provider)
-            logger.info("LLM provider available: %s", provider.name)
+        # ── Cloud providers disabled (RouteAI is 100% local) ─────────
+        # Anthropic and Gemini are NOT auto-detected. The provider files
+        # still exist so developers can manually instantiate them via
+        # add_provider() for testing or comparison, but RouteAI ships
+        # as a fully local, GPU-first platform with no cloud dependency.
+        #
+        # # 2. Check Anthropic API key
+        # anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        # if anthropic_key:
+        #     from routeai_intelligence.llm.anthropic_provider import AnthropicProvider
+        #
+        #     provider = AnthropicProvider(api_key=anthropic_key)
+        #     self._providers.append(provider)
+        #     logger.info("LLM provider available: %s", provider.name)
+        #
+        # # 3. Check Gemini API key
+        # gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        # if gemini_key:
+        #     from routeai_intelligence.llm.gemini_provider import GeminiProvider
+        #
+        #     provider = GeminiProvider(api_key=gemini_key)
+        #     self._providers.append(provider)
+        #     logger.info("LLM provider available: %s", provider.name)
 
         self._primary = self._providers[0] if self._providers else None
         self._initialized = True
@@ -88,9 +95,11 @@ class LLMRouter:
                 len(self._providers),
             )
         else:
-            logger.warning(
-                "No LLM providers available. Start Ollama or set "
-                "ANTHROPIC_API_KEY / GEMINI_API_KEY."
+            logger.error(
+                "Ollama not available. RouteAI requires local Ollama "
+                "for LLM inference. Install: curl -fsSL "
+                "https://ollama.ai/install.sh | sh, then run: "
+                "./scripts/setup_ollama.sh"
             )
 
     async def generate(
@@ -100,11 +109,21 @@ class LLMRouter:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.0,
         max_tokens: int = 8192,
+        task_type: str = "chat",
     ) -> LLMResponse:
         """Try primary provider, fall back to next on failure.
 
         Iterates through all available providers in priority order.  If a
         provider raises an exception, logs a warning and tries the next.
+
+        Args:
+            messages: Conversation messages.
+            system: System prompt.
+            tools: Tool schemas for tool-use.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens in response.
+            task_type: Task type for VRAM-aware model selection (e.g.
+                ``"design_review"``, ``"constraint_generation"``, ``"chat"``).
 
         Raises:
             RuntimeError: If all providers fail or none are configured.
@@ -114,20 +133,38 @@ class LLMRouter:
 
         if not self._providers:
             raise RuntimeError(
-                "No LLM providers available. Start Ollama or set "
-                "ANTHROPIC_API_KEY / GEMINI_API_KEY."
+                "No LLM providers available. Start Ollama and run "
+                "./scripts/setup_ollama.sh to set up local inference."
+            )
+
+        # Select the optimal model for this task type via the ModelManager
+        model_override: str | None = None
+        if self._model_manager is not None:
+            model_override = self._model_manager.select_model(task_type)
+            logger.debug(
+                "ModelManager selected model '%s' for task_type='%s'",
+                model_override,
+                task_type,
             )
 
         last_error: Exception | None = None
         for provider in self._providers:
             try:
-                return await provider.generate(
-                    messages=messages,
-                    system=system,
-                    tools=tools,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
+                kwargs: dict[str, Any] = {
+                    "messages": messages,
+                    "system": system,
+                    "tools": tools,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+                # Pass model_override to OllamaProvider
+                if model_override is not None:
+                    from routeai_intelligence.llm.ollama_provider import OllamaProvider
+
+                    if isinstance(provider, OllamaProvider):
+                        kwargs["model_override"] = model_override
+
+                return await provider.generate(**kwargs)
             except Exception as exc:
                 last_error = exc
                 logger.warning(
@@ -145,10 +182,17 @@ class LLMRouter:
         messages: list[dict[str, str]],
         system: str = "",
         schema: dict[str, Any] | None = None,
+        task_type: str = "chat",
     ) -> dict[str, Any]:
         """Generate structured JSON with fallback.
 
         Tries each provider in order until one succeeds.
+
+        Args:
+            messages: Conversation messages.
+            system: System prompt.
+            schema: JSON schema for the expected output structure.
+            task_type: Task type for VRAM-aware model selection.
 
         Raises:
             RuntimeError: If all providers fail.
@@ -159,14 +203,32 @@ class LLMRouter:
         if not self._providers:
             raise RuntimeError("No LLM providers available.")
 
+        # Select the optimal model for this task type via the ModelManager
+        model_override: str | None = None
+        if self._model_manager is not None:
+            model_override = self._model_manager.select_model(task_type)
+            logger.debug(
+                "ModelManager selected model '%s' for task_type='%s' (JSON)",
+                model_override,
+                task_type,
+            )
+
         last_error: Exception | None = None
         for provider in self._providers:
             try:
-                return await provider.generate_json(
-                    messages=messages,
-                    system=system,
-                    schema=schema,
-                )
+                kwargs: dict[str, Any] = {
+                    "messages": messages,
+                    "system": system,
+                    "schema": schema,
+                }
+                # Pass model_override to OllamaProvider
+                if model_override is not None:
+                    from routeai_intelligence.llm.ollama_provider import OllamaProvider
+
+                    if isinstance(provider, OllamaProvider):
+                        kwargs["model_override"] = model_override
+
+                return await provider.generate_json(**kwargs)
             except Exception as exc:
                 last_error = exc
                 logger.warning(
@@ -193,6 +255,11 @@ class LLMRouter:
     def is_initialized(self) -> bool:
         """Whether ``initialize()`` has been called."""
         return self._initialized
+
+    @property
+    def model_manager(self) -> ModelManager | None:
+        """The VRAM-aware model manager, or ``None`` if Ollama is not available."""
+        return self._model_manager
 
     def add_provider(self, provider: LLMProvider, primary: bool = False) -> None:
         """Manually add a provider (useful for testing or custom providers).

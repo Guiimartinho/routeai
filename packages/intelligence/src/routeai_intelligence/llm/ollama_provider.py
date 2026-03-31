@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any
 
@@ -54,6 +55,7 @@ class OllamaProvider(LLMProvider):
         self._host = self._host.rstrip("/")
         self._model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
         self._timeout = timeout
+        self._current_loaded_model: str | None = None
 
     # ------------------------------------------------------------------
     # LLMProvider interface
@@ -74,6 +76,7 @@ class OllamaProvider(LLMProvider):
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.0,
         max_tokens: int = 8192,
+        model_override: str | None = None,
     ) -> LLMResponse:
         """Call Ollama ``/api/chat`` endpoint.
 
@@ -89,8 +92,10 @@ class OllamaProvider(LLMProvider):
 
         ollama_messages = self._build_messages(messages, effective_system)
 
+        effective_model = model_override or self._model
+
         payload: dict[str, Any] = {
-            "model": self._model,
+            "model": effective_model,
             "messages": ollama_messages,
             "stream": False,
             "options": {
@@ -134,6 +139,7 @@ class OllamaProvider(LLMProvider):
         messages: list[dict[str, str]],
         system: str = "",
         schema: dict[str, Any] | None = None,
+        model_override: str | None = None,
     ) -> dict[str, Any]:
         """Use Ollama's JSON mode (``format: "json"``) for structured output."""
         schema_instruction = ""
@@ -147,8 +153,10 @@ class OllamaProvider(LLMProvider):
         effective_system = (system or "") + schema_instruction
         ollama_messages = self._build_messages(messages, effective_system)
 
+        effective_model = model_override or self._model
+
         payload: dict[str, Any] = {
-            "model": self._model,
+            "model": effective_model,
             "messages": ollama_messages,
             "stream": False,
             "format": "json",
@@ -204,6 +212,73 @@ class OllamaProvider(LLMProvider):
                     return []
                 tags = resp.json()
                 return [m.get("name", "") for m in tags.get("models", [])]
+        except Exception:
+            return []
+
+    async def ensure_model_loaded(self, model: str) -> float:
+        """Pre-load a model into Ollama VRAM via a dummy generate call.
+
+        If the model is already the current loaded model, returns immediately.
+        Otherwise sends a minimal request to ``/api/generate`` which forces
+        Ollama to load the model weights, and tracks the elapsed time.
+
+        Args:
+            model: Ollama model tag to load (e.g. ``qwen2.5:7b``).
+
+        Returns:
+            Wall-clock seconds spent loading.  ``0.0`` if no swap was needed.
+        """
+        if model == self._current_loaded_model:
+            return 0.0
+
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    f"{self._host}/api/generate",
+                    json={
+                        "model": model,
+                        "prompt": " ",
+                        "keep_alive": "10m",
+                        "stream": False,
+                    },
+                )
+                resp.raise_for_status()
+            elapsed = time.monotonic() - start
+            self._current_loaded_model = model
+            logger.info(
+                "Model swap complete: loaded '%s' in %.1fs", model, elapsed
+            )
+            return elapsed
+        except (httpx.HTTPError, Exception) as exc:
+            elapsed = time.monotonic() - start
+            logger.warning(
+                "Failed to pre-load model '%s' after %.1fs: %s",
+                model,
+                elapsed,
+                exc,
+            )
+            return elapsed
+
+    async def get_loaded_models(self) -> list[str]:
+        """Return names of models currently loaded in Ollama VRAM.
+
+        Queries the ``/api/ps`` endpoint which lists running models.
+
+        Returns:
+            List of model name strings, or empty list on failure.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{self._host}/api/ps")
+                if resp.status_code != 200:
+                    return []
+                data = resp.json()
+                return [
+                    m.get("name", "")
+                    for m in data.get("models", [])
+                    if m.get("name")
+                ]
         except Exception:
             return []
 
