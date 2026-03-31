@@ -139,15 +139,16 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          pip install poetry pytest
+          pip install poetry
           cd packages/core && poetry install --no-interaction && cd ../..
           cd packages/solver && poetry install --no-interaction && cd ../..
           cd packages/intelligence && poetry install --no-interaction && cd ../..
+          pip install pytest pydantic shapely numpy httpx
 
       - name: Run integration tests
         run: |
           PYTHONPATH="packages/core/src:packages/intelligence/src:packages/solver/src" \
-          python -m pytest tests/integration/test_gpu_architecture.py -v --tb=short
+          pytest tests/integration/test_gpu_architecture.py -v --tb=short
 
   build-go:
     name: Build Go API
