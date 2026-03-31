@@ -1,0 +1,446 @@
+{
+  "$defs": {
+    "ImpedanceTarget": {
+      "description": "Impedance requirement for a net class.",
+      "properties": {
+        "type": {
+          "description": "Impedance type",
+          "enum": ["single_ended", "differential"],
+          "title": "Type",
+          "type": "string"
+        },
+        "target_ohm": {
+          "description": "Target impedance in ohms",
+          "maximum": 150,
+          "minimum": 20,
+          "title": "Target Ohm",
+          "type": "number"
+        },
+        "tolerance_percent": {
+          "default": 10,
+          "description": "Impedance tolerance in percent",
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Tolerance Percent",
+          "type": "number"
+        },
+        "coupling_gap_mm": {
+          "anyOf": [
+            {"type": "number"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Coupling gap for differential pairs in mm",
+          "title": "Coupling Gap Mm"
+        }
+      },
+      "required": ["type", "target_ohm"],
+      "title": "ImpedanceTarget",
+      "type": "object"
+    },
+    "LengthMatchingIntent": {
+      "description": "Length matching constraint for a group of nets.",
+      "properties": {
+        "group": {
+          "description": "Length matching group name",
+          "title": "Group",
+          "type": "string"
+        },
+        "max_skew_mm": {
+          "description": "Maximum length skew in mm",
+          "maximum": 50,
+          "minimum": 0,
+          "title": "Max Skew Mm",
+          "type": "number"
+        },
+        "reference_net": {
+          "anyOf": [
+            {"type": "string"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Net to use as length reference (longest if None)",
+          "title": "Reference Net"
+        }
+      },
+      "required": ["group", "max_skew_mm"],
+      "title": "LengthMatchingIntent",
+      "type": "object"
+    },
+    "ViaStrategyIntent": {
+      "description": "Via usage rules for a net class.",
+      "properties": {
+        "type": {
+          "default": "through",
+          "description": "Allowed via type",
+          "enum": ["through", "blind_microvia", "buried", "any"],
+          "title": "Type",
+          "type": "string"
+        },
+        "max_vias_per_net": {
+          "default": 10,
+          "description": "Maximum number of vias per net",
+          "maximum": 50,
+          "minimum": 0,
+          "title": "Max Vias Per Net",
+          "type": "integer"
+        },
+        "via_size_mm": {
+          "default": 0.3,
+          "description": "Via outer diameter in mm",
+          "maximum": 1.0,
+          "minimum": 0.1,
+          "title": "Via Size Mm",
+          "type": "number"
+        }
+      },
+      "title": "ViaStrategyIntent",
+      "type": "object"
+    },
+    "DiffPairIntent": {
+      "description": "Differential pair routing constraints.",
+      "properties": {
+        "max_intra_pair_skew_mm": {
+          "description": "Maximum skew within the pair in mm",
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Max Intra Pair Skew Mm",
+          "type": "number"
+        },
+        "max_parallel_length_mm": {
+          "default": 1000,
+          "description": "Maximum parallel routing length in mm",
+          "minimum": 0,
+          "title": "Max Parallel Length Mm",
+          "type": "number"
+        },
+        "min_spacing_to_other_diff_mm": {
+          "default": 0.5,
+          "description": "Minimum spacing to other differential pairs in mm",
+          "minimum": 0,
+          "title": "Min Spacing To Other Diff Mm",
+          "type": "number"
+        }
+      },
+      "required": ["max_intra_pair_skew_mm"],
+      "title": "DiffPairIntent",
+      "type": "object"
+    },
+    "NetClassIntent": {
+      "description": "Routing rules for a group of nets.",
+      "properties": {
+        "name": {
+          "description": "Net class name",
+          "title": "Name",
+          "type": "string"
+        },
+        "nets": {
+          "description": "Net names belonging to this class",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "title": "Nets",
+          "type": "array"
+        },
+        "impedance": {
+          "anyOf": [
+            {"$ref": "#/$defs/ImpedanceTarget"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Impedance requirement"
+        },
+        "width_mm": {
+          "default": 0.15,
+          "description": "Trace width in mm",
+          "maximum": 10.0,
+          "minimum": 0.05,
+          "title": "Width Mm",
+          "type": "number"
+        },
+        "clearance_mm": {
+          "default": 0.15,
+          "description": "Minimum clearance in mm",
+          "maximum": 10.0,
+          "minimum": 0.05,
+          "title": "Clearance Mm",
+          "type": "number"
+        },
+        "layer_preference": {
+          "default": [],
+          "description": "Preferred routing layers",
+          "items": {"type": "string"},
+          "title": "Layer Preference",
+          "type": "array"
+        },
+        "length_matching": {
+          "anyOf": [
+            {"$ref": "#/$defs/LengthMatchingIntent"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Length matching constraint"
+        },
+        "via_strategy": {
+          "anyOf": [
+            {"$ref": "#/$defs/ViaStrategyIntent"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Via usage rules"
+        },
+        "differential_pair": {
+          "anyOf": [
+            {"$ref": "#/$defs/DiffPairIntent"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Differential pair constraints"
+        },
+        "routing_priority": {
+          "default": 50,
+          "description": "Routing priority (1=highest)",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Routing Priority",
+          "type": "integer"
+        },
+        "max_total_length_mm": {
+          "anyOf": [
+            {"type": "number"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Maximum total trace length in mm",
+          "title": "Max Total Length Mm"
+        }
+      },
+      "required": ["name", "nets"],
+      "title": "NetClassIntent",
+      "type": "object"
+    },
+    "RoutingOrderEntry": {
+      "description": "Priority entry in the routing order.",
+      "properties": {
+        "priority": {
+          "description": "Routing priority (1=first)",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "net_class": {
+          "description": "Net class name to route at this priority",
+          "title": "Net Class",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Human-readable reason for this priority",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": ["priority", "net_class", "reason"],
+      "title": "RoutingOrderEntry",
+      "type": "object"
+    },
+    "LayerTransitionIntent": {
+      "description": "Rules for layer changes during routing.",
+      "properties": {
+        "max_layer_changes_per_net": {
+          "default": 4,
+          "description": "Maximum layer changes per net",
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Max Layer Changes Per Net",
+          "type": "integer"
+        },
+        "preferred_via_layers": {
+          "default": [],
+          "description": "Preferred layer pairs for vias (e.g. [['F.Cu', 'In1.Cu']])",
+          "items": {
+            "items": {"type": "string"},
+            "type": "array"
+          },
+          "title": "Preferred Via Layers",
+          "type": "array"
+        }
+      },
+      "title": "LayerTransitionIntent",
+      "type": "object"
+    },
+    "LayerAssignmentIntent": {
+      "description": "Layer usage plan for routing.",
+      "properties": {
+        "signal_layers": {
+          "description": "Layers available for signal routing",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "title": "Signal Layers",
+          "type": "array"
+        },
+        "reference_planes": {
+          "additionalProperties": {"type": "string"},
+          "default": {},
+          "description": "Mapping of signal layer to its reference plane (e.g. {'F.Cu': 'In1.Cu'})",
+          "title": "Reference Planes",
+          "type": "object"
+        },
+        "layer_transitions": {
+          "anyOf": [
+            {"$ref": "#/$defs/LayerTransitionIntent"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Layer transition rules"
+        }
+      },
+      "required": ["signal_layers"],
+      "title": "LayerAssignmentIntent",
+      "type": "object"
+    },
+    "CostWeights": {
+      "description": "Cost function weights for the routing algorithm.",
+      "properties": {
+        "via_cost": {
+          "default": 10.0,
+          "description": "Cost per via",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Via Cost",
+          "type": "number"
+        },
+        "layer_change_cost": {
+          "default": 8.0,
+          "description": "Cost per layer change",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Layer Change Cost",
+          "type": "number"
+        },
+        "length_cost": {
+          "default": 1.0,
+          "description": "Cost per mm of trace length",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Length Cost",
+          "type": "number"
+        },
+        "congestion_cost": {
+          "default": 5.0,
+          "description": "Cost for routing in congested areas",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Congestion Cost",
+          "type": "number"
+        },
+        "reference_plane_violation_cost": {
+          "default": 100.0,
+          "description": "Cost for routing without a continuous reference plane",
+          "maximum": 1000,
+          "minimum": 0,
+          "title": "Reference Plane Violation Cost",
+          "type": "number"
+        }
+      },
+      "title": "CostWeights",
+      "type": "object"
+    },
+    "VoltageDropTarget": {
+      "description": "Voltage drop budget for a power net.",
+      "properties": {
+        "net": {
+          "description": "Power net name",
+          "title": "Net",
+          "type": "string"
+        },
+        "source_component": {
+          "description": "Source component reference designator",
+          "title": "Source Component",
+          "type": "string"
+        },
+        "sink_components": {
+          "description": "Sink component reference designators",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "title": "Sink Components",
+          "type": "array"
+        },
+        "max_drop_mv": {
+          "description": "Maximum allowed voltage drop in mV",
+          "maximum": 1000,
+          "minimum": 0,
+          "title": "Max Drop Mv",
+          "type": "number"
+        },
+        "max_current_a": {
+          "description": "Maximum expected current in amps",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Max Current A",
+          "type": "number"
+        },
+        "min_trace_width_mm": {
+          "description": "Minimum trace width for this power net in mm",
+          "maximum": 10.0,
+          "minimum": 0.05,
+          "title": "Min Trace Width Mm",
+          "type": "number"
+        }
+      },
+      "required": ["net", "source_component", "sink_components", "max_drop_mv", "max_current_a", "min_trace_width_mm"],
+      "title": "VoltageDropTarget",
+      "type": "object"
+    }
+  },
+  "description": "Complete routing intent emitted by LLM for the C++ routing solver. Contains NO coordinates -- only net names, constraints, and strategy.",
+  "properties": {
+    "schema_version": {
+      "default": "routeai/routing-intent/v1",
+      "description": "Schema version identifier",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "board_id": {
+      "default": "",
+      "description": "Board design identifier",
+      "title": "Board Id",
+      "type": "string"
+    },
+    "net_classes": {
+      "default": [],
+      "description": "Net class routing rules",
+      "items": {"$ref": "#/$defs/NetClassIntent"},
+      "title": "Net Classes",
+      "type": "array"
+    },
+    "routing_order": {
+      "default": [],
+      "description": "Ordered routing priorities",
+      "items": {"$ref": "#/$defs/RoutingOrderEntry"},
+      "title": "Routing Order",
+      "type": "array"
+    },
+    "layer_assignment": {
+      "anyOf": [
+        {"$ref": "#/$defs/LayerAssignmentIntent"},
+        {"type": "null"}
+      ],
+      "default": null,
+      "description": "Layer usage plan"
+    },
+    "cost_weights": {
+      "allOf": [{"$ref": "#/$defs/CostWeights"}],
+      "default": {},
+      "description": "Router cost function weights"
+    },
+    "voltage_drop_targets": {
+      "default": [],
+      "description": "Power net voltage drop budgets",
+      "items": {"$ref": "#/$defs/VoltageDropTarget"},
+      "title": "Voltage Drop Targets",
+      "type": "array"
+    }
+  },
+  "title": "RoutingIntent",
+  "type": "object"
+}

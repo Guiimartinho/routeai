@@ -22,6 +22,8 @@ _SCHEMA_FILES: dict[str, str] = {
     "constraint": "constraint_schema.json",
     "review": "review_schema.json",
     "routing": "routing_schema.json",
+    "placement_intent": "placement_intent_schema.json",
+    "routing_intent": "routing_intent_schema.json",
 }
 
 

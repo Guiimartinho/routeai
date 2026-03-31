@@ -1,0 +1,319 @@
+{
+  "$defs": {
+    "ClusteringIntent": {
+      "description": "How components in a zone should be clustered.",
+      "properties": {
+        "strategy": {
+          "enum": ["minimize_loop_area", "minimize_trace_length", "thermal_spread", "functional_group"],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "anchor_component": {
+          "description": "Reference designator of the anchor component",
+          "title": "Anchor Component",
+          "type": "string"
+        },
+        "max_spread_mm": {
+          "description": "Maximum spread radius in mm",
+          "maximum": 500.0,
+          "minimum": 1.0,
+          "title": "Max Spread Mm",
+          "type": "number"
+        },
+        "orientation_preference": {
+          "anyOf": [
+            {"type": "string"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Preferred orientation (e.g. 'horizontal', 'vertical')",
+          "title": "Orientation Preference"
+        }
+      },
+      "required": ["strategy", "anchor_component", "max_spread_mm"],
+      "title": "ClusteringIntent",
+      "type": "object"
+    },
+    "ThermalIntent": {
+      "description": "Thermal constraints for a placement zone.",
+      "properties": {
+        "max_junction_temp_c": {
+          "description": "Maximum junction temperature in Celsius",
+          "maximum": 200,
+          "minimum": -40,
+          "title": "Max Junction Temp C",
+          "type": "number"
+        },
+        "keepout_radius_mm": {
+          "default": 0,
+          "description": "Thermal keepout radius in mm",
+          "maximum": 50,
+          "minimum": 0,
+          "title": "Keepout Radius Mm",
+          "type": "number"
+        },
+        "requires_thermal_vias": {
+          "default": false,
+          "description": "Whether thermal vias are required",
+          "title": "Requires Thermal Vias",
+          "type": "boolean"
+        },
+        "copper_pour_layers": {
+          "default": [],
+          "description": "Layers requiring copper pour for heat spreading",
+          "items": {"type": "string"},
+          "title": "Copper Pour Layers",
+          "type": "array"
+        },
+        "airflow_direction": {
+          "anyOf": [
+            {"enum": ["left_to_right", "right_to_left", "bottom_to_top", "top_to_bottom"], "type": "string"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Expected airflow direction over this zone",
+          "title": "Airflow Direction"
+        }
+      },
+      "required": ["max_junction_temp_c"],
+      "title": "ThermalIntent",
+      "type": "object"
+    },
+    "PowerPlaneIntent": {
+      "description": "Power plane requirements for a zone.",
+      "properties": {
+        "voltage_rail": {
+          "description": "Voltage rail name (e.g. '3V3', '1V8')",
+          "title": "Voltage Rail",
+          "type": "string"
+        },
+        "target_voltage_drop_mv": {
+          "description": "Target maximum voltage drop in mV",
+          "maximum": 500,
+          "minimum": 0,
+          "title": "Target Voltage Drop Mv",
+          "type": "number"
+        },
+        "min_copper_area_mm2": {
+          "default": 0,
+          "description": "Minimum copper area in mm^2",
+          "minimum": 0,
+          "title": "Min Copper Area Mm2",
+          "type": "number"
+        }
+      },
+      "required": ["voltage_rail", "target_voltage_drop_mv"],
+      "title": "PowerPlaneIntent",
+      "type": "object"
+    },
+    "PlacementZone": {
+      "description": "A functional zone with components and constraints.",
+      "properties": {
+        "zone_id": {
+          "description": "Unique zone identifier",
+          "title": "Zone Id",
+          "type": "string"
+        },
+        "zone_type": {
+          "description": "Functional type of this zone",
+          "enum": ["functional_group", "power_stage", "high_speed", "analog", "digital", "rf", "connector"],
+          "title": "Zone Type",
+          "type": "string"
+        },
+        "components": {
+          "description": "Reference designators of components in this zone",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "title": "Components",
+          "type": "array"
+        },
+        "clustering": {
+          "anyOf": [
+            {"$ref": "#/$defs/ClusteringIntent"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Clustering strategy for components in this zone"
+        },
+        "thermal": {
+          "anyOf": [
+            {"$ref": "#/$defs/ThermalIntent"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Thermal constraints for this zone"
+        },
+        "power_plane": {
+          "anyOf": [
+            {"$ref": "#/$defs/PowerPlaneIntent"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Power plane requirements for this zone"
+        }
+      },
+      "required": ["zone_id", "zone_type", "components"],
+      "title": "PlacementZone",
+      "type": "object"
+    },
+    "CriticalPair": {
+      "description": "A pair of components with a distance constraint.",
+      "properties": {
+        "component_a": {
+          "description": "First component reference designator",
+          "title": "Component A",
+          "type": "string"
+        },
+        "component_b": {
+          "description": "Second component reference designator",
+          "title": "Component B",
+          "type": "string"
+        },
+        "constraint": {
+          "description": "Type of distance constraint",
+          "enum": ["minimize_distance", "decoupling", "differential", "thermal_separation"],
+          "title": "Constraint",
+          "type": "string"
+        },
+        "max_distance_mm": {
+          "description": "Maximum allowed distance in mm",
+          "maximum": 500,
+          "minimum": 0,
+          "title": "Max Distance Mm",
+          "type": "number"
+        },
+        "reason": {
+          "description": "Human-readable reason for this constraint",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": ["component_a", "component_b", "constraint", "max_distance_mm", "reason"],
+      "title": "CriticalPair",
+      "type": "object"
+    },
+    "KeepoutIntent": {
+      "description": "Area where certain components must not be placed.",
+      "properties": {
+        "type": {
+          "description": "Reason for the keepout",
+          "enum": ["thermal", "mechanical", "electrical", "rf"],
+          "title": "Type",
+          "type": "string"
+        },
+        "source_component": {
+          "anyOf": [
+            {"type": "string"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "description": "Component generating the keepout (if any)",
+          "title": "Source Component"
+        },
+        "radius_mm": {
+          "default": 0,
+          "description": "Keepout radius in mm",
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Radius Mm",
+          "type": "number"
+        },
+        "excluded_components": {
+          "default": [],
+          "description": "Components that must not be placed in this keepout",
+          "items": {"type": "string"},
+          "title": "Excluded Components",
+          "type": "array"
+        },
+        "reason": {
+          "description": "Human-readable reason for this keepout",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": ["type", "reason"],
+      "title": "KeepoutIntent",
+      "type": "object"
+    },
+    "GroundPlaneIntent": {
+      "description": "Ground/power plane requirement.",
+      "properties": {
+        "layer": {
+          "description": "Layer name (e.g. 'In1.Cu')",
+          "title": "Layer",
+          "type": "string"
+        },
+        "type": {
+          "description": "Plane fill type",
+          "enum": ["solid_pour", "hatched", "split_plane"],
+          "title": "Type",
+          "type": "string"
+        },
+        "net": {
+          "description": "Net name for the plane (e.g. 'GND', 'VCC')",
+          "title": "Net",
+          "type": "string"
+        },
+        "split_allowed": {
+          "default": true,
+          "description": "Whether the plane may be split by routing",
+          "title": "Split Allowed",
+          "type": "boolean"
+        },
+        "reason": {
+          "description": "Human-readable reason for this plane requirement",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": ["layer", "type", "net", "reason"],
+      "title": "GroundPlaneIntent",
+      "type": "object"
+    }
+  },
+  "description": "Complete placement intent emitted by LLM for the C++ placement solver. Contains NO coordinates -- only component references, zone types, and constraints.",
+  "properties": {
+    "schema_version": {
+      "default": "routeai/placement-intent/v1",
+      "description": "Schema version identifier",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "board_id": {
+      "default": "",
+      "description": "Board design identifier",
+      "title": "Board Id",
+      "type": "string"
+    },
+    "zones": {
+      "default": [],
+      "description": "Functional placement zones",
+      "items": {"$ref": "#/$defs/PlacementZone"},
+      "title": "Zones",
+      "type": "array"
+    },
+    "critical_pairs": {
+      "default": [],
+      "description": "Component pairs with distance constraints",
+      "items": {"$ref": "#/$defs/CriticalPair"},
+      "title": "Critical Pairs",
+      "type": "array"
+    },
+    "keepouts": {
+      "default": [],
+      "description": "Placement keepout areas",
+      "items": {"$ref": "#/$defs/KeepoutIntent"},
+      "title": "Keepouts",
+      "type": "array"
+    },
+    "ground_planes": {
+      "default": [],
+      "description": "Ground/power plane requirements",
+      "items": {"$ref": "#/$defs/GroundPlaneIntent"},
+      "title": "Ground Planes",
+      "type": "array"
+    }
+  },
+  "title": "PlacementIntent",
+  "type": "object"
+}
