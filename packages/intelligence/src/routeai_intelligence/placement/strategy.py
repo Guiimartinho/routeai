@@ -6,6 +6,10 @@ When a user finishes a schematic, the PlacementStrategyGenerator:
 3. Returns a structured PlacementStrategy with reasoning
 
 All LLM outputs are validated through Gate 1 (schema validation) before use.
+
+The ``generate_placement_intent`` function is the newer, DSL-first path:
+it asks the LLM to emit a ``PlacementIntent`` (no coordinates) that the C++
+placement solver consumes directly.
 """
 
 from __future__ import annotations
@@ -545,3 +549,177 @@ class PlacementStrategyGenerator:
 
         logger.warning("PlacementStrategyGenerator: Failed to parse JSON from LLM output")
         return {"_raw_text": text, "_parse_error": "Could not extract valid JSON"}
+
+
+# ---------------------------------------------------------------------------
+# PlacementIntent DSL generation (coordinate-free)
+# ---------------------------------------------------------------------------
+
+# Maximum approximate token budget for the board+schematic context sent to
+# the LLM.  Keeps the payload small enough for the 4096-context T2 model.
+_MAX_CONTEXT_COMPONENTS = 80
+_MAX_CONTEXT_NETS = 120
+
+
+def _format_board(board_data: dict[str, Any] | str) -> str:
+    """Convert board data to a compact text representation for the LLM.
+
+    Extracts:
+    - Component list (reference, value, footprint, power dissipation)
+    - Board outline dimensions
+    - Existing constraints (if any)
+
+    Keeps the output under ~1000 tokens.
+    """
+    if isinstance(board_data, str):
+        try:
+            board_data = json.loads(board_data)
+        except (json.JSONDecodeError, TypeError):
+            return board_data[:3000]
+
+    if not isinstance(board_data, dict):
+        return str(board_data)[:3000]
+
+    parts: list[str] = []
+
+    # Board outline
+    outline = board_data.get("outline") or board_data.get("board_outline")
+    if outline:
+        parts.append(f"Outline: {json.dumps(outline, default=str)}")
+
+    # Components — compact table
+    footprints = board_data.get("footprints", [])
+    if footprints:
+        parts.append("Components:")
+        for fp in footprints[:_MAX_CONTEXT_COMPONENTS]:
+            ref = fp.get("reference", "?")
+            value = fp.get("value", "")
+            footprint = fp.get("footprint", fp.get("lib_id", ""))
+            power_w = fp.get("power_dissipation_w", "")
+            line = f"  {ref}: {value}"
+            if footprint:
+                line += f" [{footprint}]"
+            if power_w:
+                line += f" ({power_w}W)"
+            parts.append(line)
+        if len(footprints) > _MAX_CONTEXT_COMPONENTS:
+            parts.append(f"  ... and {len(footprints) - _MAX_CONTEXT_COMPONENTS} more")
+
+    # Existing constraints
+    constraints = board_data.get("constraints") or board_data.get("design_rules")
+    if constraints:
+        parts.append(f"Constraints: {json.dumps(constraints, default=str)[:500]}")
+
+    return "\n".join(parts)
+
+
+def _format_schematic(schematic_data: dict[str, Any] | str) -> str:
+    """Convert schematic data to a compact text representation for the LLM.
+
+    Extracts:
+    - Component list with reference designators, values, footprints
+    - Net list with net names and connected pins
+    - Power dissipation estimates (if available)
+
+    Keeps the output under ~1000 tokens.
+    """
+    if isinstance(schematic_data, str):
+        try:
+            schematic_data = json.loads(schematic_data)
+        except (json.JSONDecodeError, TypeError):
+            return schematic_data[:3000]
+
+    if not isinstance(schematic_data, dict):
+        return str(schematic_data)[:3000]
+
+    parts: list[str] = []
+
+    # Symbols / components
+    symbols = schematic_data.get("symbols", [])
+    if symbols:
+        parts.append("Schematic components:")
+        for sym in symbols[:_MAX_CONTEXT_COMPONENTS]:
+            ref = sym.get("reference", "?")
+            value = sym.get("value", "")
+            lib_id = sym.get("lib_id", "")
+            fp = ""
+            for prop in sym.get("properties", []):
+                if isinstance(prop, dict) and prop.get("key", "").lower() == "footprint":
+                    fp = prop.get("value", "")
+                    break
+            line = f"  {ref}: {value}"
+            if lib_id:
+                line += f" ({lib_id})"
+            if fp:
+                line += f" [{fp}]"
+            parts.append(line)
+        if len(symbols) > _MAX_CONTEXT_COMPONENTS:
+            parts.append(f"  ... and {len(symbols) - _MAX_CONTEXT_COMPONENTS} more")
+
+    # Nets
+    nets = schematic_data.get("nets", [])
+    if nets:
+        parts.append("Nets:")
+        for net in nets[:_MAX_CONTEXT_NETS]:
+            name = net.get("name", "?")
+            is_power = net.get("is_power", False)
+            pins = net.get("pins", [])
+            pin_strs = [
+                f"{p[0]}.{p[1]}" if isinstance(p, (list, tuple)) else str(p)
+                for p in pins[:8]
+            ]
+            suffix = " [PWR]" if is_power else ""
+            pin_text = ", ".join(pin_strs)
+            if len(pins) > 8:
+                pin_text += f" +{len(pins) - 8} more"
+            parts.append(f"  {name}{suffix}: {pin_text}")
+        if len(nets) > _MAX_CONTEXT_NETS:
+            parts.append(f"  ... and {len(nets) - _MAX_CONTEXT_NETS} more nets")
+
+    return "\n".join(parts)
+
+
+async def generate_placement_intent(
+    llm_router: Any,
+    board_data: dict[str, Any] | str,
+    schematic_data: dict[str, Any] | str,
+) -> Any:
+    """Generate a PlacementIntent DSL from board and schematic data.
+
+    Uses the LLM (via ``llm_router.generate_json``) to produce a structured
+    ``PlacementIntent`` containing zones, critical pairs, keepouts, and ground
+    plane requirements -- but **no coordinates**.  The C++ placement solver
+    consumes this intent to compute actual positions.
+
+    Args:
+        llm_router: An initialized ``LLMRouter`` instance (or any object
+            that exposes an async ``generate_json`` method).
+        board_data: Serialized ``BoardDesign`` dict (or JSON string).
+        schematic_data: Serialized ``SchematicDesign`` dict (or JSON string).
+
+    Returns:
+        A validated ``PlacementIntent`` Pydantic model.
+    """
+    from routeai_core.models.intent import PlacementIntent
+    from routeai_intelligence.agent.prompts.placement_intent import (
+        PLACEMENT_INTENT_PROMPT,
+    )
+
+    schema_json = json.dumps(PlacementIntent.model_json_schema(), indent=2)
+    system = PLACEMENT_INTENT_PROMPT.format(schema=schema_json)
+
+    context = (
+        f"BOARD DATA:\n{_format_board(board_data)}\n\n"
+        f"SCHEMATIC DATA:\n{_format_schematic(schematic_data)}"
+    )
+
+    response = await llm_router.generate_json(
+        messages=[{"role": "user", "content": context}],
+        system=system,
+        schema=PlacementIntent.model_json_schema(),
+        task_type="placement_strategy",
+    )
+
+    # Validate through Pydantic
+    intent = PlacementIntent.model_validate(response)
+    return intent

@@ -24,6 +24,7 @@ from routeai_intelligence.placement.strategy import (
     PlacementStrategy,
     PlacementStrategyGenerator,
     PlacementZone,
+    generate_placement_intent,
 )
 
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "CriticalPairPlacement",
     "PlacementExecutor",
     "PlacementResult",
+    "generate_placement_intent",
 ]

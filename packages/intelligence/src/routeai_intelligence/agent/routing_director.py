@@ -16,10 +16,14 @@ from typing import Any
 import anthropic
 from pydantic import BaseModel, Field
 
+from routeai_core.models.intent import RoutingIntent
+
 from routeai_intelligence.agent.prompts.routing_director import (
     ROUTING_DIRECTOR_SYSTEM_PROMPT,
     STRATEGY_ADJUSTMENT_PROMPT,
 )
+from routeai_intelligence.agent.prompts.routing_intent import ROUTING_INTENT_PROMPT
+from routeai_intelligence.llm.router import LLMRouter
 from routeai_intelligence.validation.schema_validator import SchemaValidator
 
 logger = logging.getLogger(__name__)
@@ -348,6 +352,73 @@ class RoutingDirector:
             strategy = self._flag_unresolved_nets(strategy, solver_feedback)
 
         return strategy
+
+    async def generate_routing_intent(
+        self,
+        board_state: dict[str, Any],
+        schematic_info: dict[str, Any],
+        constraints: dict[str, Any],
+        board_id: str = "",
+        llm_router: LLMRouter | None = None,
+    ) -> RoutingIntent:
+        """Generate a RoutingIntent DSL from the design data.
+
+        Produces the new-format RoutingIntent (net classes, routing order,
+        layer assignments, cost weights, voltage drop targets) that the C++
+        routing solver consumes directly. The LLM never emits coordinates --
+        only net names, constraints, and strategy parameters.
+
+        Args:
+            board_state: Serialized board design including component placements,
+                stackup definition, board outline, and existing traces/zones.
+            schematic_info: Serialized schematic with net list, component
+                connections, and interface groupings.
+            constraints: Existing constraint set (net classes, diff pairs,
+                length groups, special rules).
+            board_id: Board design identifier to embed in the intent.
+            llm_router: Optional LLMRouter for VRAM-aware model selection.
+                Falls back to the direct Anthropic client if not provided.
+
+        Returns:
+            Validated RoutingIntent Pydantic model.
+        """
+        # Build the schema string from the RoutingIntent model
+        schema_json = json.dumps(
+            RoutingIntent.model_json_schema(), indent=2
+        )
+        system_prompt = ROUTING_INTENT_PROMPT.replace("{schema}", schema_json)
+
+        # Build a compact context message
+        user_message = _format_routing_context(
+            board_state, schematic_info, constraints
+        )
+
+        # Prefer LLMRouter.generate_json() for VRAM-aware model selection;
+        # fall back to the direct Anthropic _call_llm() path.
+        if llm_router is not None:
+            messages = [{"role": "user", "content": user_message}]
+            raw_dict = await llm_router.generate_json(
+                messages=messages,
+                system=system_prompt,
+                schema=RoutingIntent.model_json_schema(),
+                task_type="routing_director",
+            )
+            raw_output = json.dumps(raw_dict)
+        else:
+            raw_output = await self._call_llm(
+                system_prompt=system_prompt,
+                user_message=user_message,
+            )
+
+        # Parse and validate through the RoutingIntent Pydantic model
+        parsed = self._try_parse_json(raw_output)
+
+        # Inject board_id if provided and not already set
+        if board_id and not parsed.get("board_id"):
+            parsed["board_id"] = board_id
+
+        intent = RoutingIntent.model_validate(parsed)
+        return intent
 
     @property
     def adjustment_count(self) -> int:
@@ -713,3 +784,134 @@ class RoutingDirector:
 
         logger.warning("RoutingDirector: Failed to parse JSON from LLM output")
         return {"_raw_text": text, "_parse_error": "Could not extract valid JSON"}
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers for RoutingIntent generation
+# ---------------------------------------------------------------------------
+
+
+def _format_routing_context(
+    board_state: dict[str, Any],
+    schematic_info: dict[str, Any],
+    constraints: dict[str, Any],
+) -> str:
+    """Build a compact context message for RoutingIntent generation.
+
+    Extracts the most relevant information from the board, schematic, and
+    constraint dicts and formats it into a concise prompt section. Target
+    is under ~2000 tokens to leave room for the LLM's response.
+
+    Sections:
+    - Net list with connected components (from schematic)
+    - Existing constraints (net classes, diff pairs)
+    - Stackup info (layers, materials)
+    - Board dimensions
+    """
+    parts: list[str] = []
+
+    # -- Board dimensions --
+    outline = board_state.get("outline") or board_state.get("board_outline")
+    dimensions = board_state.get("dimensions") or board_state.get("board_dimensions")
+    if outline or dimensions:
+        parts.append("## Board Dimensions")
+        if dimensions:
+            parts.append(json.dumps(dimensions, indent=2, default=str))
+        elif outline:
+            parts.append(json.dumps(outline, indent=2, default=str))
+        parts.append("")
+
+    # -- Stackup info --
+    stackup = board_state.get("stackup") or board_state.get("layer_stackup")
+    if stackup:
+        parts.append("## Stackup")
+        # Keep only layer names, types, thickness, and materials
+        if isinstance(stackup, list):
+            compact_layers = []
+            for layer in stackup:
+                if isinstance(layer, dict):
+                    compact_layers.append({
+                        k: v
+                        for k, v in layer.items()
+                        if k in (
+                            "name", "type", "thickness_mm", "material",
+                            "copper_weight_oz", "dielectric_constant",
+                        )
+                    })
+            parts.append(json.dumps(compact_layers, indent=2, default=str))
+        else:
+            parts.append(json.dumps(stackup, indent=2, default=str))
+        parts.append("")
+
+    # -- Net list with connected components --
+    nets = schematic_info.get("nets") or schematic_info.get("net_list", [])
+    if nets:
+        parts.append("## Nets (name -> connected components)")
+        # Truncate to first 80 nets to stay within token budget
+        net_entries: list[str] = []
+        net_items = nets if isinstance(nets, list) else list(nets.values()) if isinstance(nets, dict) else []
+        for i, net in enumerate(net_items):
+            if i >= 80:
+                remaining = len(net_items) - 80
+                net_entries.append(f"... and {remaining} more nets")
+                break
+            if isinstance(net, dict):
+                name = net.get("name") or net.get("net_name", f"net_{i}")
+                pads = net.get("pads") or net.get("connected_pads") or net.get("connections", [])
+                # Extract component refs from pads
+                comp_refs: list[str] = []
+                for pad in pads if isinstance(pads, list) else []:
+                    if isinstance(pad, dict):
+                        ref = pad.get("component") or pad.get("ref", "")
+                        if ref and ref not in comp_refs:
+                            comp_refs.append(ref)
+                    elif isinstance(pad, str):
+                        comp_refs.append(pad)
+                net_entries.append(f"- {name}: {', '.join(comp_refs)}")
+            elif isinstance(net, str):
+                net_entries.append(f"- {net}")
+        parts.append("\n".join(net_entries))
+        parts.append("")
+
+    # -- Existing constraints --
+    net_classes = constraints.get("net_classes", [])
+    diff_pairs = constraints.get("diff_pairs", [])
+    length_groups = constraints.get("length_groups", [])
+
+    if net_classes or diff_pairs or length_groups:
+        parts.append("## Existing Constraints")
+        if net_classes:
+            parts.append("### Net Classes")
+            parts.append(json.dumps(net_classes, indent=2, default=str))
+        if diff_pairs:
+            parts.append("### Differential Pairs")
+            parts.append(json.dumps(diff_pairs, indent=2, default=str))
+        if length_groups:
+            parts.append("### Length-Matched Groups")
+            parts.append(json.dumps(length_groups, indent=2, default=str))
+        parts.append("")
+
+    # -- Component summary (count by type) --
+    components = (
+        board_state.get("components")
+        or schematic_info.get("components")
+        or []
+    )
+    if components and isinstance(components, list):
+        type_counts: dict[str, int] = {}
+        for comp in components:
+            if isinstance(comp, dict):
+                ctype = comp.get("type") or comp.get("package", "unknown")
+                type_counts[ctype] = type_counts.get(ctype, 0) + 1
+        if type_counts:
+            parts.append(f"## Components: {len(components)} total")
+            for ctype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
+                parts.append(f"- {ctype}: {count}")
+            parts.append("")
+
+    parts.append(
+        "Generate a RoutingIntent JSON for this design. "
+        "Respond with ONLY the JSON object, no explanation."
+    )
+
+    return "\n".join(parts)
