@@ -6,11 +6,17 @@ Gate 3: Citation verification - every design decision must be traceable
 """
 
 from routeai_intelligence.validation.citation_checker import CitationChecker
-from routeai_intelligence.validation.confidence import ConfidenceChecker
+from routeai_intelligence.validation.confidence import (
+    ConfidenceChecker,
+    LocalEscalationPolicy,
+    physics_check,
+)
 from routeai_intelligence.validation.schema_validator import SchemaValidator
 
 __all__ = [
     "SchemaValidator",
     "ConfidenceChecker",
     "CitationChecker",
+    "physics_check",
+    "LocalEscalationPolicy",
 ]

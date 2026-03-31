@@ -3,6 +3,9 @@
 Checks that safety-critical parameters meet a higher confidence threshold
 than general parameters. Flags or rejects items that fall below the
 required thresholds.
+
+Includes physics boundary checks that catch physically impossible LLM
+outputs at zero cost (deterministic, no LLM needed).
 """
 
 from __future__ import annotations
@@ -45,6 +48,146 @@ _SAFETY_CRITICAL_RULE_TYPES: frozenset[str] = frozenset({
     "clearance",
     "guard_ring",
 })
+
+
+# ---------------------------------------------------------------------------
+# Physics boundary checks — deterministic, zero-cost validation
+# ---------------------------------------------------------------------------
+
+# Maps field names to (min, max) tuples.  None means unbounded on that side.
+PHYSICS_BOUNDARIES: dict[str, tuple[float | None, float | None]] = {
+    "impedance_ohm": (20.0, 150.0),       # PCB trace impedance range
+    "crosstalk_db": (-80.0, 0.0),          # always negative
+    "voltage_drop_mv": (0.0, None),        # can't be negative
+    "junction_temp_c": (-40.0, 200.0),     # standard package range
+    "trace_width_mm": (0.05, 10.0),        # physical PCB limits
+    "clearance_mm": (0.05, 50.0),          # physical limits
+    "via_drill_mm": (0.1, 6.35),           # standard PCB drills
+    "current_capacity_a": (0.0, 100.0),    # practical PCB limits
+    "dielectric_constant": (1.0, 15.0),    # air to ceramic
+    "copper_thickness_mm": (0.005, 0.210), # 0.25oz to 6oz
+}
+
+
+def _deep_get(d: dict[str, Any], key: str) -> Any:
+    """Recursively search for *key* in nested dicts/lists.
+
+    Returns the first match found (depth-first) or ``None``.
+    """
+    if key in d:
+        return d[key]
+    for v in d.values():
+        if isinstance(v, dict):
+            result = _deep_get(v, key)
+            if result is not None:
+                return result
+        elif isinstance(v, list):
+            for element in v:
+                if isinstance(element, dict):
+                    result = _deep_get(element, key)
+                    if result is not None:
+                        return result
+    return None
+
+
+def physics_check(result: dict[str, Any]) -> tuple[float, list[str]]:
+    """Check *result* against physics boundaries.
+
+    Returns ``(score, violations)`` where *score* starts at 1.0 and is
+    reduced for each violation.  Violations are human-readable strings.
+    """
+    score = 1.0
+    violations: list[str] = []
+
+    for field_name, (lo, hi) in PHYSICS_BOUNDARIES.items():
+        value = _deep_get(result, field_name)
+        if value is None:
+            continue
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+
+        if lo is not None and value < lo:
+            score -= 0.3
+            violations.append(
+                f"{field_name}={value} is below physical minimum {lo}"
+            )
+        if hi is not None and value > hi:
+            score -= 0.3
+            violations.append(
+                f"{field_name}={value} is above physical maximum {hi}"
+            )
+
+    # Special: crosstalk must always be negative
+    crosstalk = _deep_get(result, "crosstalk_db")
+    if crosstalk is not None:
+        try:
+            if float(crosstalk) > 0:
+                score -= 0.5
+                violations.append(
+                    f"crosstalk_db={crosstalk} is positive (physically impossible)"
+                )
+        except (TypeError, ValueError):
+            pass
+
+    # Special: voltage drop must not exceed 10 % of supply voltage
+    vdrop = _deep_get(result, "voltage_drop_mv")
+    supply = _deep_get(result, "supply_voltage_mv")
+    if vdrop is not None and supply is not None:
+        try:
+            if float(vdrop) > float(supply) * 0.1:
+                score -= 0.3
+                violations.append(
+                    f"voltage_drop_mv={vdrop} exceeds 10% of "
+                    f"supply_voltage_mv={supply}"
+                )
+        except (TypeError, ValueError):
+            pass
+
+    return (max(0.0, score), violations)
+
+
+class LocalEscalationPolicy:
+    """Decide whether to pass, retry, decompose, or escalate to human review.
+
+    Uses a composite of physics_score and confidence against per-task-type
+    thresholds.
+    """
+
+    THRESHOLDS: dict[str, float] = {
+        "si_pi_analysis": 0.75,
+        "thermal_analysis": 0.70,
+        "design_review": 0.65,
+        "constraint_gen": 0.60,
+        "placement_intent": 0.55,
+        "general_chat": 0.40,
+    }
+
+    def should_retry(
+        self,
+        task_type: str,
+        physics_score: float,
+        confidence: float,
+    ) -> str:
+        """Return an escalation action string.
+
+        Possible returns: ``"pass"``, ``"retry_bigger_model"``,
+        ``"decompose"``, ``"human_review"``.
+        """
+        threshold = self.THRESHOLDS.get(task_type, 0.65)
+        composite = 0.5 * physics_score + 0.5 * confidence
+
+        if composite >= threshold:
+            return "pass"
+        if composite >= threshold - 0.15:
+            return "retry_bigger_model"
+        if composite >= threshold - 0.30:
+            return "decompose"
+        return "human_review"
+
+
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -107,6 +250,28 @@ class ConfidenceChecker:
         flagged: list[dict[str, Any]] = []
 
         for item in suggestions:
+            # --- Physics boundary pre-check ---
+            p_score, p_violations = physics_check(item)
+            if p_score < 0.5:
+                item_name = item.get("name", "unknown")
+                flagged.append(FlaggedItem(
+                    item_name=item_name,
+                    confidence=item.get("confidence", 0.0),
+                    threshold=0.5,
+                    is_safety_critical=True,
+                    reason=(
+                        f"Physics boundary violations: "
+                        + "; ".join(p_violations)
+                    ),
+                    action="reject",
+                ).to_dict())
+                logger.warning(
+                    "Physics reject: %s — %s",
+                    item_name,
+                    "; ".join(p_violations),
+                )
+                continue
+
             confidence = item.get("confidence")
             if confidence is None:
                 # No confidence score at all - flag it
