@@ -137,6 +137,42 @@ func (h *HealthHandler) OllamaStatus(c *gin.Context) {
 	}
 }
 
+// OllamaConfig handles GET /api/ollama/config — GPU info and model config.
+// Proxies to the ML service /ml/gpu-info endpoint; returns sensible defaults
+// if the ML service is unreachable.
+func (h *HealthHandler) OllamaConfig(c *gin.Context) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(mlServiceURL + "/ml/gpu-info")
+	if err != nil {
+		// Fallback: return defaults for 12GB GPU.
+		c.JSON(http.StatusOK, gin.H{
+			"gpu": gin.H{
+				"name":          "Unknown",
+				"vram_total_mb": 12288,
+				"vram_free_mb":  10240,
+			},
+			"profile": gin.H{
+				"vram_gb":        12,
+				"resident_model": "qwen2.5:7b",
+				"swap_model":     "qwen2.5-coder:14b",
+				"max_context":    4096,
+				"max_parallel":   2,
+			},
+			"tiers": gin.H{
+				"t3_fast":       "qwen2.5:7b",
+				"t2_structured": "qwen2.5-coder:14b",
+				"t1_strategy":   "decompose",
+			},
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Forward ML service response as-is.
+	body, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, "application/json", body)
+}
+
 // OllamaModels handles GET /api/v1/ollama/models — list available models.
 func (h *HealthHandler) OllamaModels(c *gin.Context) {
 	resp, err := ollamaHTTPClient.Get(ollamaBaseURL + "/api/tags")

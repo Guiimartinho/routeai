@@ -133,6 +133,7 @@ func main() {
 		{
 			ollama.GET("/status", healthHandler.OllamaStatus)
 			ollama.GET("/models", healthHandler.OllamaModels)
+			ollama.GET("/config", healthHandler.OllamaConfig)
 			ollama.POST("/pull", healthHandler.OllamaPull)
 		}
 	}
@@ -144,6 +145,7 @@ func main() {
 	{
 		pubOllama.GET("/status", healthHandler.OllamaStatus)
 		pubOllama.GET("/models", healthHandler.OllamaModels)
+		pubOllama.GET("/config", healthHandler.OllamaConfig)
 		pubOllama.POST("/pull", healthHandler.OllamaPull)
 		pubOllama.POST("/chat", healthHandler.OllamaChat)
 	}

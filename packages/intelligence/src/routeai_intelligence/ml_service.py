@@ -294,6 +294,39 @@ async def health() -> dict[str, Any]:
     }
 
 
+@app.get("/ml/gpu-info")
+async def gpu_info() -> dict[str, Any]:
+    """Return GPU info, VRAM profile, and model tier mapping."""
+    from routeai_intelligence.llm.gpu_detect import get_gpu_info
+    from routeai_intelligence.llm.model_manager import ModelManager
+
+    gpu = get_gpu_info()
+    vram_gb = gpu.vram_total_mb // 1024
+    manager = ModelManager(vram_gb)
+    profile = manager.profile
+
+    return {
+        "gpu": {
+            "name": gpu.name,
+            "vram_total_mb": gpu.vram_total_mb,
+            "vram_free_mb": gpu.vram_free_mb,
+            "compute_capability": gpu.compute_capability,
+        },
+        "profile": {
+            "vram_gb": profile.vram_gb,
+            "resident_model": profile.resident_model,
+            "swap_model": profile.swap_model,
+            "max_context": profile.max_context,
+            "max_parallel": profile.max_parallel,
+        },
+        "tiers": {
+            "t3_fast": profile.resident_model,
+            "t2_structured": profile.swap_model or profile.resident_model,
+            "t1_strategy": "direct" if vram_gb >= 24 else "decompose",
+        },
+    }
+
+
 @app.post("/ml/review", response_model=ReviewResponse)
 async def ai_review(req: ReviewRequest) -> ReviewResponse:
     """Run AI design review on board data using Ollama."""
