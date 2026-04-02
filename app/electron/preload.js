@@ -69,6 +69,17 @@ contextBridge.exposeInMainWorld('routeai', {
   },
 
   // -----------------------------------------------------------------------
+  // Service status
+  // -----------------------------------------------------------------------
+  services: {
+    /**
+     * Get status of all backend services.
+     * @returns {Promise<{goApi: boolean, mlService: boolean, ollama: boolean}>}
+     */
+    status: () => ipcRenderer.invoke('services:status'),
+  },
+
+  // -----------------------------------------------------------------------
   // Ollama integration
   // -----------------------------------------------------------------------
   ollama: {

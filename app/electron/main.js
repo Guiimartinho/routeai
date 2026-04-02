@@ -1,6 +1,7 @@
 // RouteAI EDA - Electron Main Process
-// Creates the desktop application shell, manages the Python backend,
-// and provides native OS integration (menus, dialogs, Ollama detection).
+// Creates the desktop application shell, manages backend services
+// (Go API, Python ML), and provides native OS integration
+// (menus, dialogs, Ollama detection).
 
 const {
   app,
@@ -12,7 +13,7 @@ const {
   nativeTheme,
 } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
@@ -28,30 +29,31 @@ if (!gotLock) {
 // Globals
 // ---------------------------------------------------------------------------
 let mainWindow = null;
-let backendProcess = null;
+let goApiProcess = null;
+let mlServiceProcess = null;
 let ollamaAvailable = false;
+let goApiReady = false;
+let mlServiceReady = false;
 
 const isDev = !app.isPackaged;
 const VITE_DEV_URL = 'http://localhost:3000';
-const BACKEND_PORT = 8000;
+const GO_API_PORT = 8080;
+const ML_SERVICE_PORT = 8001;
 const OLLAMA_URL = 'http://localhost:11434';
 
 // Paths
 const ROOT_DIR = isDev
   ? path.resolve(__dirname, '..', '..')
   : path.resolve(process.resourcesPath);
-const SERVER_SCRIPT = isDev
-  ? path.join(ROOT_DIR, 'server.py')
-  : path.join(ROOT_DIR, 'backend', 'server.py');
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 const PRELOAD = path.join(__dirname, 'preload.js');
 
 // ---------------------------------------------------------------------------
-// Ollama detection
+// Ollama detection — polls /api/tags which is the proper health endpoint
 // ---------------------------------------------------------------------------
 function checkOllama() {
   return new Promise((resolve) => {
-    const req = http.get(OLLAMA_URL, { timeout: 2000 }, (res) => {
+    const req = http.get(`${OLLAMA_URL}/api/tags`, { timeout: 2000 }, (res) => {
       ollamaAvailable = res.statusCode === 200;
       res.resume();
       resolve(ollamaAvailable);
@@ -70,8 +72,12 @@ function checkOllama() {
 
 function updateTitle() {
   if (!mainWindow) return;
-  const ollamaStatus = ollamaAvailable ? 'Ollama Connected' : 'Ollama Offline';
-  mainWindow.setTitle(`RouteAI EDA  |  ${ollamaStatus}`);
+  const parts = ['RouteAI EDA'];
+  if (goApiReady) parts.push('API Connected');
+  else parts.push('API Offline');
+  if (ollamaAvailable) parts.push('Ollama Connected');
+  else parts.push('Ollama Offline');
+  mainWindow.setTitle(parts.join('  |  '));
 }
 
 // Poll Ollama status every 10 seconds
@@ -86,109 +92,328 @@ function startOllamaPolling() {
 }
 
 // ---------------------------------------------------------------------------
-// Python backend management
+// Go API management
 // ---------------------------------------------------------------------------
+
+/**
+ * Find the Go API binary path.
+ * - Production: bundled at process.resourcesPath/routeai-api(.exe)
+ * - Dev: built binary at packages/api/routeai-api(.exe), or fall back to
+ *        assuming start.sh runs it separately.
+ */
+function findGoApiBinary() {
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  const binaryName = `routeai-api${ext}`;
+
+  if (!isDev) {
+    // Production: check multiple possible locations in resources/
+    const candidates = [
+      path.join(process.resourcesPath, binaryName),
+      path.join(process.resourcesPath, 'bin', binaryName),
+      path.join(process.resourcesPath, 'backend', binaryName),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  // Dev mode: check if binary exists in packages/api/
+  const devBinary = path.join(ROOT_DIR, 'packages', 'api', binaryName);
+  if (fs.existsSync(devBinary)) return devBinary;
+
+  return null;
+}
+
+function waitForService(port, healthPath, retries = 30, interval = 500) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      const req = http.get(
+        `http://localhost:${port}${healthPath}`,
+        { timeout: 1000 },
+        (res) => {
+          res.resume();
+          if (res.statusCode >= 200 && res.statusCode < 400) {
+            resolve(true);
+          } else {
+            retry();
+          }
+        }
+      );
+      req.on('error', () => retry());
+      req.on('timeout', () => {
+        req.destroy();
+        retry();
+      });
+    };
+    const retry = () => {
+      attempts++;
+      if (attempts >= retries) {
+        reject(new Error(`Service on port ${port} did not start after ${retries} attempts`));
+      } else {
+        setTimeout(check, interval);
+      }
+    };
+    check();
+  });
+}
+
+/**
+ * Check if a service is already running on the given port.
+ */
+function isServiceRunning(port, healthPath) {
+  return new Promise((resolve) => {
+    const req = http.get(
+      `http://localhost:${port}${healthPath}`,
+      { timeout: 1000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode >= 200 && res.statusCode < 400);
+      }
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function startGoApi() {
+  // In dev mode, check if the Go API is already running (started by start.sh)
+  if (isDev) {
+    const alreadyRunning = await isServiceRunning(GO_API_PORT, '/health');
+    if (alreadyRunning) {
+      console.log('[RouteAI] Go API already running on port 8080 (started externally).');
+      goApiReady = true;
+      return;
+    }
+  }
+
+  const binary = findGoApiBinary();
+  if (!binary) {
+    if (isDev) {
+      console.warn(
+        '[RouteAI] Go API binary not found at packages/api/routeai-api.\n' +
+        '  Run "./start.sh" to build and start all services, or:\n' +
+        '  cd packages/api && go build -o routeai-api . && ./routeai-api'
+      );
+      return; // Not fatal in dev — user can start it manually
+    }
+    throw new Error(
+      'Go API binary not found in application resources.\n' +
+      'The installation may be corrupted. Please reinstall RouteAI EDA.'
+    );
+  }
+
+  console.log(`[RouteAI] Starting Go API: ${binary}`);
+
+  const env = { ...process.env };
+  env.GIN_MODE = isDev ? 'debug' : 'release';
+  env.ML_SERVICE_URL = `http://localhost:${ML_SERVICE_PORT}`;
+  env.OLLAMA_BASE_URL = OLLAMA_URL;
+
+  if (isDev) {
+    // Dev mode: set data paths relative to project root
+    env.KICAD_INDEX_PATH = path.join(ROOT_DIR, 'data', 'component_library', 'kicad_index.json');
+    env.KICAD_SYMBOLS_PATH = path.join(ROOT_DIR, 'data', 'component_library', 'kicad_symbols.json');
+  } else {
+    // Production: data is in resources/data/component_library/ (matches build-config.js)
+    env.KICAD_INDEX_PATH = path.join(process.resourcesPath, 'data', 'component_library', 'kicad_index.json');
+    env.KICAD_SYMBOLS_PATH = path.join(process.resourcesPath, 'data', 'component_library', 'kicad_symbols.json');
+  }
+
+  const cwd = path.dirname(binary);
+
+  goApiProcess = spawn(binary, [], {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  goApiProcess.stdout.on('data', (data) => {
+    console.log(`[GoAPI] ${data.toString().trimEnd()}`);
+  });
+
+  goApiProcess.stderr.on('data', (data) => {
+    console.error(`[GoAPI] ${data.toString().trimEnd()}`);
+  });
+
+  goApiProcess.on('close', (code) => {
+    console.log(`[RouteAI] Go API exited with code ${code}`);
+    goApiProcess = null;
+    goApiReady = false;
+    updateTitle();
+  });
+
+  goApiProcess.on('error', (err) => {
+    console.error('[RouteAI] Failed to start Go API:', err.message);
+    goApiProcess = null;
+    goApiReady = false;
+  });
+
+  await waitForService(GO_API_PORT, '/health');
+  goApiReady = true;
+  console.log('[RouteAI] Go API is ready on port 8080.');
+}
+
+function killGoApi() {
+  if (!goApiProcess) return;
+  console.log('[RouteAI] Stopping Go API...');
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(goApiProcess.pid), '/f', '/t']);
+    } else {
+      goApiProcess.kill('SIGTERM');
+      setTimeout(() => {
+        if (goApiProcess) {
+          try { goApiProcess.kill('SIGKILL'); } catch (_) { /* already dead */ }
+        }
+      }, 3000);
+    }
+  } catch (err) {
+    console.error('[RouteAI] Error killing Go API:', err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Python ML service management (optional — AI features degrade gracefully)
+// ---------------------------------------------------------------------------
+
+/**
+ * Find a working Python 3 interpreter.
+ * Returns null if none found.
+ */
 function findPython() {
-  // In packaged builds the bundled Python is under resources/python
+  // In packaged builds, check for bundled Python
   if (!isDev) {
     const bundled = path.join(process.resourcesPath, 'python', 'python3');
     if (fs.existsSync(bundled)) return bundled;
     const bundledWin = path.join(process.resourcesPath, 'python', 'python.exe');
     if (fs.existsSync(bundledWin)) return bundledWin;
   }
-  // Development: use system Python (poetry environment expected)
-  return process.platform === 'win32' ? 'python' : 'python3';
+
+  // Try system Python
+  const cmd = process.platform === 'win32' ? 'python' : 'python3';
+  try {
+    execSync(`${cmd} --version`, { stdio: 'ignore' });
+    return cmd;
+  } catch {
+    return null;
+  }
 }
 
-function waitForBackend(port, retries = 30, interval = 500) {
-  return new Promise((resolve, reject) => {
-    let attempts = 0;
-    const check = () => {
-      const req = http.get(`http://localhost:${port}/docs`, { timeout: 1000 }, (res) => {
-        res.resume();
-        resolve(true);
-      });
-      req.on('error', () => {
-        attempts++;
-        if (attempts >= retries) {
-          reject(new Error(`Backend did not start after ${retries} attempts`));
-        } else {
-          setTimeout(check, interval);
-        }
-      });
-      req.on('timeout', () => {
-        req.destroy();
-        attempts++;
-        if (attempts >= retries) {
-          reject(new Error('Backend start timeout'));
-        } else {
-          setTimeout(check, interval);
-        }
-      });
-    };
-    check();
-  });
-}
+async function startMlService() {
+  // In dev mode, check if ML service is already running (started by start.sh)
+  if (isDev) {
+    const alreadyRunning = await isServiceRunning(ML_SERVICE_PORT, '/health');
+    if (alreadyRunning) {
+      console.log('[RouteAI] ML service already running on port 8001 (started externally).');
+      mlServiceReady = true;
+      return;
+    }
+  }
 
-function startBackend() {
   const python = findPython();
-  console.log(`[RouteAI] Starting backend: ${python} ${SERVER_SCRIPT}`);
+  if (!python) {
+    console.warn(
+      '[RouteAI] Python not found. ML/AI features will be limited.\n' +
+      '  Install Python 3.10+ and the intelligence package for full AI capabilities.'
+    );
+    return; // Not fatal — AI features degrade gracefully
+  }
+
+  // Check if the intelligence package is available
+  const intelligenceDir = isDev
+    ? path.join(ROOT_DIR, 'packages', 'intelligence')
+    : path.join(process.resourcesPath, 'backend', 'packages', 'intelligence');
+
+  if (!fs.existsSync(intelligenceDir)) {
+    console.warn('[RouteAI] Intelligence package not found. ML features disabled.');
+    return;
+  }
+
+  console.log(`[RouteAI] Starting ML service: ${python}`);
 
   const env = { ...process.env };
-  // Ensure the backend binds to localhost only
   env.HOST = '127.0.0.1';
-  env.PORT = String(BACKEND_PORT);
+  env.PORT = String(ML_SERVICE_PORT);
 
-  const cwd = isDev ? ROOT_DIR : path.dirname(SERVER_SCRIPT);
+  // Try to start via uvicorn
+  const args = [
+    '-m', 'uvicorn',
+    'routeai_intelligence.ml_service:app',
+    '--host', '127.0.0.1',
+    '--port', String(ML_SERVICE_PORT),
+  ];
 
-  backendProcess = spawn(python, [SERVER_SCRIPT], {
-    cwd,
+  mlServiceProcess = spawn(python, args, {
+    cwd: intelligenceDir,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
-    // On Windows, spawn in a new process group so we can kill the tree
-    ...(process.platform === 'win32' ? { detached: false } : {}),
   });
 
-  backendProcess.stdout.on('data', (data) => {
-    console.log(`[Backend] ${data.toString().trimEnd()}`);
+  mlServiceProcess.stdout.on('data', (data) => {
+    console.log(`[MLSvc] ${data.toString().trimEnd()}`);
   });
 
-  backendProcess.stderr.on('data', (data) => {
-    console.error(`[Backend] ${data.toString().trimEnd()}`);
+  mlServiceProcess.stderr.on('data', (data) => {
+    // uvicorn logs to stderr by default
+    console.log(`[MLSvc] ${data.toString().trimEnd()}`);
   });
 
-  backendProcess.on('close', (code) => {
-    console.log(`[RouteAI] Backend exited with code ${code}`);
-    backendProcess = null;
+  mlServiceProcess.on('close', (code) => {
+    console.log(`[RouteAI] ML service exited with code ${code}`);
+    mlServiceProcess = null;
+    mlServiceReady = false;
   });
 
-  backendProcess.on('error', (err) => {
-    console.error('[RouteAI] Failed to start backend:', err.message);
-    backendProcess = null;
+  mlServiceProcess.on('error', (err) => {
+    console.error('[RouteAI] Failed to start ML service:', err.message);
+    mlServiceProcess = null;
   });
 
-  return waitForBackend(BACKEND_PORT);
+  try {
+    await waitForService(ML_SERVICE_PORT, '/health', 20, 500);
+    mlServiceReady = true;
+    console.log('[RouteAI] ML service is ready on port 8001.');
+  } catch (err) {
+    console.warn(`[RouteAI] ML service did not start: ${err.message}`);
+    console.warn('[RouteAI] AI features will be limited. This is not a fatal error.');
+    // Kill the process if it's still hanging
+    if (mlServiceProcess) {
+      try { mlServiceProcess.kill(); } catch (_) { /* ignore */ }
+      mlServiceProcess = null;
+    }
+  }
 }
 
-function killBackend() {
-  if (!backendProcess) return;
-  console.log('[RouteAI] Stopping backend...');
+function killMlService() {
+  if (!mlServiceProcess) return;
+  console.log('[RouteAI] Stopping ML service...');
   try {
     if (process.platform === 'win32') {
-      // Kill the process tree on Windows
-      spawn('taskkill', ['/pid', String(backendProcess.pid), '/f', '/t']);
+      spawn('taskkill', ['/pid', String(mlServiceProcess.pid), '/f', '/t']);
     } else {
-      backendProcess.kill('SIGTERM');
-      // Force kill after 3 seconds if still alive
+      mlServiceProcess.kill('SIGTERM');
       setTimeout(() => {
-        if (backendProcess) {
-          try { backendProcess.kill('SIGKILL'); } catch (_) { /* already dead */ }
+        if (mlServiceProcess) {
+          try { mlServiceProcess.kill('SIGKILL'); } catch (_) { /* already dead */ }
         }
       }, 3000);
     }
   } catch (err) {
-    console.error('[RouteAI] Error killing backend:', err.message);
+    console.error('[RouteAI] Error killing ML service:', err.message);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Kill all managed services
+// ---------------------------------------------------------------------------
+function killAllServices() {
+  killGoApi();
+  killMlService();
 }
 
 // ---------------------------------------------------------------------------
@@ -293,16 +518,24 @@ function buildMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Ollama Status',
+          label: 'Service Status',
           click: async () => {
             await checkOllama();
             updateTitle();
+            const lines = [
+              `Go API: ${goApiReady ? 'Running (port 8080)' : 'Not available'}`,
+              `ML Service: ${mlServiceReady ? 'Running (port 8001)' : 'Not available'}`,
+              `Ollama: ${ollamaAvailable ? 'Connected (port 11434)' : 'Not detected'}`,
+            ];
+            if (!ollamaAvailable) {
+              lines.push('', 'Install Ollama for local AI inference:');
+              lines.push('https://ollama.ai/install');
+            }
             dialog.showMessageBox(mainWindow, {
-              type: ollamaAvailable ? 'info' : 'warning',
-              title: 'Ollama Status',
-              message: ollamaAvailable
-                ? 'Ollama is running and available at localhost:11434.'
-                : 'Ollama is not detected. Install Ollama for local AI inference.',
+              type: goApiReady ? 'info' : 'warning',
+              title: 'Service Status',
+              message: 'RouteAI EDA Services',
+              detail: lines.join('\n'),
               buttons: ['OK'],
             });
           },
@@ -338,7 +571,9 @@ function buildMenu() {
               message: `RouteAI EDA v${app.getVersion()}`,
               detail:
                 'AI-Powered PCB Design Tool\n\n' +
-                'Built with Electron, React, FastAPI, and Claude AI.\n' +
+                'Built with Electron, React, Go, and Claude AI.\n' +
+                `Go API: ${goApiReady ? 'Connected' : 'Not running'}\n` +
+                `ML Service: ${mlServiceReady ? 'Connected' : 'Not running'}\n` +
                 `Ollama: ${ollamaAvailable ? 'Connected' : 'Not detected'}\n` +
                 `Node: ${process.versions.node}\n` +
                 `Electron: ${process.versions.electron}\n` +
@@ -476,6 +711,14 @@ function registerIPC() {
     });
   });
 
+  ipcMain.handle('services:status', async () => {
+    return {
+      goApi: goApiReady,
+      mlService: mlServiceReady,
+      ollama: ollamaAvailable,
+    };
+  });
+
   ipcMain.handle('app:version', () => app.getVersion());
 
   ipcMain.handle('app:platform', () => process.platform);
@@ -537,20 +780,36 @@ app.whenReady().then(async () => {
   buildMenu();
   createWindow();
 
-  // Start backend
+  // Start Go API (primary backend)
   try {
-    await startBackend();
-    console.log('[RouteAI] Backend is ready.');
+    await startGoApi();
+    console.log('[RouteAI] Go API service started successfully.');
   } catch (err) {
-    console.error('[RouteAI] Backend failed to start:', err.message);
+    console.error('[RouteAI] Go API failed to start:', err.message);
+    goApiReady = false;
     dialog.showErrorBox(
       'Backend Error',
-      `Failed to start the Python backend.\n\n${err.message}\n\nThe application may not work correctly.`
+      `Failed to start the Go API backend.\n\n${err.message}\n\n` +
+      'The application may not work correctly.\n\n' +
+      (isDev
+        ? 'In development, run ./start.sh to start all services.'
+        : 'Try reinstalling RouteAI EDA.')
     );
   }
 
-  // Start Ollama polling
+  // Start ML service (optional — AI features degrade gracefully)
+  try {
+    await startMlService();
+  } catch (err) {
+    console.warn('[RouteAI] ML service not available:', err.message);
+    // Not fatal — the app works without ML
+  }
+
+  // Start Ollama polling (external dependency — app works without it)
   startOllamaPolling();
+
+  // Update title with final status
+  updateTitle();
 
   app.on('activate', () => {
     // macOS dock click with no windows
@@ -561,7 +820,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  killBackend();
+  killAllServices();
   if (ollamaInterval) clearInterval(ollamaInterval);
   if (process.platform !== 'darwin') {
     app.quit();
@@ -569,6 +828,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  killBackend();
+  killAllServices();
   if (ollamaInterval) clearInterval(ollamaInterval);
 });
