@@ -1,5 +1,5 @@
 .PHONY: dev dev-down test test-core test-parsers test-intelligence test-solver test-cli \
-       test-cov lint lint-fix format benchmark clean
+       test-cov lint lint-fix format benchmark clean setup
 
 PYTHON_PACKAGES := core parsers intelligence solver cli
 
@@ -95,3 +95,11 @@ clean:
 	find . -name ".coverage" -delete 2>/dev/null || true
 	find . -type d -name "htmlcov" -exec rm -rf {} + 2>/dev/null || true
 	@echo "Build artifacts cleaned."
+
+# ── Setup ───────────────────────────────────────────────────────────────────
+
+setup:
+	@bash scripts/setup-dev.sh
+
+setup-no-start:
+	@bash scripts/setup-dev.sh --no-start
