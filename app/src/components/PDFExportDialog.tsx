@@ -355,7 +355,7 @@ function convertToGrayscale(el: Element): void {
   // Add a CSS filter for grayscale
   if (el instanceof SVGElement) {
     const style = el.getAttribute('style') || '';
-    if (el === el.ownerDocument?.documentElement || el.tagName === 'svg') {
+    if ((el as Element) === el.ownerDocument?.documentElement || el.tagName === 'svg') {
       el.setAttribute('style', style + '; filter: grayscale(100%);');
     }
   }
