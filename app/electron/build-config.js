@@ -16,16 +16,19 @@ const config = {
     buildResources: 'electron/resources',
   },
 
-  // Files to include in the app
+  // Files to include in the app (inside asar)
   files: [
     'dist/**/*',
     'electron/**/*',
     '!electron/resources',
     'package.json',
+    '!src/**',
+    '!node_modules/**',
   ],
 
   // Extra resources bundled alongside the app (not inside asar)
   extraResources: [
+    // Python backend
     {
       from: '../server.py',
       to: 'backend/server.py',
@@ -40,6 +43,25 @@ const config = {
         '!**/.pytest_cache',
         '!**/node_modules',
       ],
+    },
+    // Go API binary (place compiled binary in app/resources/ before building)
+    {
+      from: 'resources/routeai-api*',
+      to: 'bin/',
+    },
+    // KiCad component library indices
+    {
+      from: '../data/component_library/kicad_index.json',
+      to: 'data/component_library/kicad_index.json',
+    },
+    {
+      from: '../data/component_library/kicad_symbols.json',
+      to: 'data/component_library/kicad_symbols.json',
+    },
+    // Ollama setup script (Linux/macOS)
+    {
+      from: '../scripts/setup_ollama.sh',
+      to: 'scripts/setup_ollama.sh',
     },
   ],
 
@@ -59,6 +81,22 @@ const config = {
     ],
     icon: 'electron/resources/icon.ico',
     artifactName: '${productName}-Setup-${version}-win-${arch}.${ext}',
+    fileAssociations: [
+      {
+        ext: 'kicad_pcb',
+        name: 'KiCad PCB Layout',
+        description: 'KiCad PCB layout file',
+        role: 'Editor',
+        icon: 'electron/resources/icon.ico',
+      },
+      {
+        ext: 'kicad_sch',
+        name: 'KiCad Schematic',
+        description: 'KiCad schematic file',
+        role: 'Editor',
+        icon: 'electron/resources/icon.ico',
+      },
+    ],
   },
 
   nsis: {
@@ -72,6 +110,8 @@ const config = {
     uninstallerIcon: 'electron/resources/icon.ico',
     installerHeaderIcon: 'electron/resources/icon.ico',
     license: 'LICENSE',
+    // Custom NSIS script for Ollama checkbox and PATH option
+    include: 'electron/resources/nsis-include.nsh',
   },
 
   // ---------------------------------------------------------------------------
@@ -90,12 +130,27 @@ const config = {
       Comment: 'AI-Powered PCB Design Tool',
       Categories: 'Development;Electronics;Engineering',
       Keywords: 'PCB;EDA;routing;electronics;AI',
+      MimeType: 'application/x-kicad-pcb;application/x-kicad-schematic',
     },
+    fileAssociations: [
+      {
+        ext: 'kicad_pcb',
+        name: 'KiCad PCB Layout',
+        mimeType: 'application/x-kicad-pcb',
+      },
+      {
+        ext: 'kicad_sch',
+        name: 'KiCad Schematic',
+        mimeType: 'application/x-kicad-schematic',
+      },
+    ],
   },
 
   deb: {
     depends: ['libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6'],
+    recommends: ['ollama'],
     packageCategory: 'devel',
+    afterInstall: 'electron/resources/postinst.sh',
   },
 
   // ---------------------------------------------------------------------------
@@ -110,6 +165,20 @@ const config = {
     artifactName: '${productName}-${version}-mac-${arch}.${ext}',
     hardenedRuntime: true,
     gatekeeperAssess: false,
+    fileAssociations: [
+      {
+        ext: 'kicad_pcb',
+        name: 'KiCad PCB Layout',
+        role: 'Editor',
+        icon: 'electron/resources/icon.icns',
+      },
+      {
+        ext: 'kicad_sch',
+        name: 'KiCad Schematic',
+        role: 'Editor',
+        icon: 'electron/resources/icon.icns',
+      },
+    ],
   },
 
   dmg: {
