@@ -43,7 +43,7 @@ RouteAI is an intelligent EDA platform that combines large language models with 
 
 **Step 1 — Download the installer**
 
-Go to [GitHub Releases](https://github.com/Guiimartinho/routeai/releases) and download `RouteAI-EDA-Setup-x.x.x.exe`.
+Go to **https://github.com/Guiimartinho/routeai/releases** and download `RouteAI-EDA-Setup-x.x.x.exe`.
 
 **Step 2 — Run the installer**
 
