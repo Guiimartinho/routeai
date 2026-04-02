@@ -39,29 +39,115 @@ RouteAI is an intelligent EDA platform that combines large language models with 
 
 ## Download & Install
 
-### Desktop App (Recommended)
+### Windows (5 minutes)
 
-Download the latest installer from [GitHub Releases](https://github.com/Guiimartinho/routeai/releases):
+**Step 1 — Download the installer**
 
-| Platform | Download | Requirements |
-|----------|----------|-------------|
-| **Windows 10/11** | `RouteAI-EDA-Setup-x.x.x.exe` | 64-bit, 8GB+ RAM |
-| **Linux (Ubuntu/Debian)** | `RouteAI-EDA-x.x.x.deb` | 64-bit, 8GB+ RAM |
-| **Linux (Universal)** | `RouteAI-EDA-x.x.x.AppImage` | 64-bit, 8GB+ RAM |
+Go to [GitHub Releases](https://github.com/Guiimartinho/routeai/releases) and download `RouteAI-EDA-Setup-x.x.x.exe`.
 
-After installing, run the Ollama setup for AI features:
+**Step 2 — Run the installer**
+
+Double-click the `.exe`. The installer will:
+- Install RouteAI EDA to `C:\Program Files\RouteAI EDA\`
+- Create Desktop and Start Menu shortcuts
+- Optionally open the Ollama download page
+- Optionally add RouteAI to your PATH
+
+**Step 3 — Install Ollama (required for AI features)**
+
+1. Download from [ollama.com/download](https://ollama.com/download/windows)
+2. Run the Ollama installer (next, next, finish)
+3. Open a terminal (PowerShell or CMD) and run:
+
+```powershell
+ollama pull qwen2.5:7b
+```
+
+This downloads the AI model (~5GB). Only needed once.
+
+**Step 4 — Open RouteAI**
+
+Click the "RouteAI EDA" shortcut on your Desktop. Done.
+
+> **Or use the one-line installer** (PowerShell, admin):
+> ```powershell
+> irm https://raw.githubusercontent.com/Guiimartinho/routeai/main/scripts/install-windows.ps1 | iex
+> ```
+
+---
+
+### Linux (5 minutes)
+
+**Option A — One-line install (Ubuntu/Debian)**
 
 ```bash
-# Install Ollama (required for AI features)
+curl -fsSL https://raw.githubusercontent.com/Guiimartinho/routeai/main/scripts/install-linux.sh | bash
+```
+
+This automatically: downloads the `.deb`, installs it, installs Ollama, pulls the AI model, and launches RouteAI.
+
+**Option B — Manual install**
+
+```bash
+# 1. Download the package from GitHub Releases
+wget https://github.com/Guiimartinho/routeai/releases/latest/download/RouteAI-EDA-amd64.deb
+
+# 2. Install
+sudo dpkg -i RouteAI-EDA-amd64.deb
+
+# 3. Install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
 
-# Pull recommended models for your GPU
-./scripts/setup_ollama.sh
+# 4. Pull the AI model
+ollama pull qwen2.5:7b
+
+# 5. Launch
+routeai-eda
 ```
+
+**Option C — AppImage (any distro)**
+
+```bash
+wget https://github.com/Guiimartinho/routeai/releases/latest/download/RouteAI-EDA-x86_64.AppImage
+chmod +x RouteAI-EDA-x86_64.AppImage
+./RouteAI-EDA-x86_64.AppImage
+```
+
+---
+
+### What you need vs. what's included
+
+| Component | Included in installer? | You need to install? |
+|-----------|----------------------|---------------------|
+| RouteAI Desktop App | Yes | No |
+| Go API Backend | Yes (bundled) | No |
+| React Frontend | Yes (bundled) | No |
+| Node.js Runtime | Yes (Electron) | No |
+| **Ollama** | **No** | **Yes** (for AI features) |
+| **AI Model (qwen2.5:7b)** | **No** | **Yes** (`ollama pull qwen2.5:7b`) |
+| Python ML Service | No | Optional (advanced AI analysis) |
+| NVIDIA GPU Drivers | No | Recommended (faster AI) |
+
+### GPU Recommendations
+
+| GPU | VRAM | AI Performance |
+|-----|------|---------------|
+| RTX 3050/4050 | 6-8 GB | Basic — chat + validation |
+| RTX 3060/4060/4070 | 10-12 GB | Good — full analysis |
+| RTX 4080/4090 | 16-24 GB | Excellent — all features |
+| No GPU (CPU only) | — | Works but slow |
+
+---
 
 ### From Source (Development)
 
-See [Getting Started](#getting-started) below.
+```bash
+git clone https://github.com/Guiimartinho/routeai.git
+cd routeai
+./scripts/setup-dev.sh
+```
+
+This installs all dependencies (Python, Node, Go, Ollama) and starts all services. See [Getting Started](#getting-started) for details.
 
 ---
 
