@@ -117,19 +117,19 @@ cd "$APP_DIR"
 
 case "$TARGET" in
     windows|win)
-        npx electron-builder --win --config electron/build-config.js
+        npx electron-builder --win --config electron/build-config.cjs
         echo ""
         echo -e "${GREEN}Windows installer built:${NC}"
         ls -lh release/*.exe 2>/dev/null || echo "  Check app/release/ directory"
         ;;
     linux)
-        npx electron-builder --linux --config electron/build-config.js
+        npx electron-builder --linux --config electron/build-config.cjs
         echo ""
         echo -e "${GREEN}Linux packages built:${NC}"
         ls -lh release/*.AppImage release/*.deb 2>/dev/null || echo "  Check app/release/ directory"
         ;;
     all)
-        npx electron-builder --win --linux --config electron/build-config.js
+        npx electron-builder --win --linux --config electron/build-config.cjs
         echo ""
         echo -e "${GREEN}All installers built:${NC}"
         ls -lh release/*.exe release/*.AppImage release/*.deb 2>/dev/null || echo "  Check app/release/ directory"

@@ -27,6 +27,7 @@ jobs:
 
       - name: Build Go API
         working-directory: packages/api
+        shell: bash
         run: |
           mkdir -p ../../app/resources
           go build -ldflags="-s -w" -o ../../app/resources/routeai-api.exe .
@@ -46,7 +47,7 @@ jobs:
 
       - name: Build Windows installer
         working-directory: app
-        run: npx electron-builder --win --config electron/build-config.js
+        run: npx electron-builder --win --config electron/build-config.cjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -93,7 +94,7 @@ jobs:
 
       - name: Build Linux packages
         working-directory: app
-        run: npx electron-builder --linux --config electron/build-config.js
+        run: npx electron-builder --linux --config electron/build-config.cjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

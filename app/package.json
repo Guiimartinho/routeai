@@ -9,10 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"vite --host 0.0.0.0 --port 3000\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "vite build && electron-builder --config electron/build-config.js",
-    "electron:pack": "vite build && electron-builder --dir --config electron/build-config.js",
-    "electron:build:win": "vite build && electron-builder --win --config electron/build-config.js",
-    "electron:build:linux": "vite build && electron-builder --linux --config electron/build-config.js"
+    "electron:build": "vite build && electron-builder --config electron/build-config.cjs",
+    "electron:pack": "vite build && electron-builder --dir --config electron/build-config.cjs",
+    "electron:build:win": "vite build && electron-builder --win --config electron/build-config.cjs",
+    "electron:build:linux": "vite build && electron-builder --linux --config electron/build-config.cjs"
   },
   "dependencies": {
     "@isomorphic-git/lightning-fs": "^4.6.0",
@@ -39,6 +39,6 @@
     "wait-on": "^8.0.0"
   },
   "build": {
-    "extends": "./electron/build-config.js"
+    "extends": "./electron/build-config.cjs"
   }
 }
