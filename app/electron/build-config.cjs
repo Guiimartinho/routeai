@@ -106,9 +106,6 @@ const config = {
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     shortcutName: 'RouteAI EDA',
-    installerIcon: 'electron/resources/icon.ico',
-    uninstallerIcon: 'electron/resources/icon.ico',
-    installerHeaderIcon: 'electron/resources/icon.ico',
     // license: 'LICENSE',
   },
 
