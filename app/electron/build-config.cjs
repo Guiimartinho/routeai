@@ -109,9 +109,7 @@ const config = {
     installerIcon: 'electron/resources/icon.ico',
     uninstallerIcon: 'electron/resources/icon.ico',
     installerHeaderIcon: 'electron/resources/icon.ico',
-    license: 'LICENSE',
-    // Custom NSIS script for Ollama checkbox and PATH option
-    include: 'electron/resources/nsis-include.nsh',
+    // license: 'LICENSE',
   },
 
   // ---------------------------------------------------------------------------
@@ -122,7 +120,7 @@ const config = {
       { target: 'AppImage', arch: ['x64'] },
       { target: 'deb', arch: ['x64'] },
     ],
-    icon: 'electron/resources/icons',
+    icon: 'electron/resources/icon.png',
     category: 'Development',
     artifactName: '${productName}-${version}-linux-${arch}.${ext}',
     desktop: {
