@@ -5,7 +5,10 @@
   "type": "module",
   "main": "electron/main.js",
   "homepage": "https://github.com/Guiimartinho/routeai",
-  "author": "RouteAI Team",
+  "author": {
+    "name": "RouteAI Team",
+    "email": "contact@routeai.dev"
+  },
   "description": "LLM-Powered Electronic Design Automation Platform for PCB Design",
   "license": "MIT",
   "repository": {
